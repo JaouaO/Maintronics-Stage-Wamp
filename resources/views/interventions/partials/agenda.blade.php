@@ -6,16 +6,46 @@
     <div class="body">
         {{-- Sélecteur de technicien --}}
         <div class="grid2">
-            <label>Technicien</label>
+            <label>Technicien(nes)</label>
+
+            @php
+                $ap = collect($agendaPeople ?? []);
+                $byLevel = $ap->groupBy('access_level');
+                $levels = ['interne' => 'Interne', 'direction' => 'Direction', 'externe' => 'Externe'];
+                $currentTech = old('rea_sal'); // adaptez si vous avez une variable spécifique
+            @endphp
+
             <select id="selModeTech">
-                <option value="_ALL" selected>Tous les techniciens</option>
-                @foreach($techniciens as $technicien)
-                    <option value="{{ $technicien->CodeSal }}">
-                        {{ $technicien->NomSal }} ({{ $technicien->CodeSal }})
-                    </option>
+                <option value="_ALL" selected>Toutes (filtrées)</option>
+
+                @foreach($levels as $lvlKey => $lvlLabel)
+                    @php
+                        $grp = ($byLevel[$lvlKey] ?? collect())->sort(function($a,$b){
+                            $ra = !empty($a->is_tech) ? 0 : 1;
+                            $rb = !empty($b->is_tech) ? 0 : 1;
+                            return ($ra <=> $rb) ?: strcasecmp((string)$a->NomSal, (string)$b->NomSal);
+                        });
+                    @endphp
+
+                    @if($grp->count())
+                        <optgroup label="{{ $lvlLabel }}">
+                            @foreach($grp as $p)
+                                <option value="{{ $p->CodeSal }}"
+                                        {{ (string)$currentTech === (string)$p->CodeSal ? 'selected' : '' }}
+                                        data-level="{{ $p->access_level }}"
+                                        data-tech="{{ !empty($p->is_tech) ? 1 : 0 }}"
+                                        data-hasrdv="{{ !empty($p->has_rdv) ? 1 : 0 }}"
+                                        data-hasrdvag="{{ !empty($p->has_rdv_ag) ? 1 : 0 }}">
+                                    {{ $p->NomSal }} ({{ $p->CodeSal }}) — {{ $p->CodeAgSal ?? '' }}
+                                </option>
+                            @endforeach
+                        </optgroup>
+                    @endif
                 @endforeach
             </select>
         </div>
+
+
 
         <div id="calWrap">
             <div id="calHead">

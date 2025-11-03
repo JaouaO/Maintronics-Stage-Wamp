@@ -3,68 +3,101 @@
 use App\Http\Controllers\MainController;
 use Illuminate\Support\Facades\Route;
 
-/*
-|--------------------------------------------------------------------------
-| Web Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider within a group which
-| contains the "web" middleware group. Now create something great!
-|
-*/
+Route::get('/', fn() => redirect()->route('authentification'));
 
-Route::get('/', function () {
-    return redirect()->route('authentification');
-});
+Route::get('/__ping', fn () => 'web ok');
+Route::fallback(fn () => 'fallback ok'); // toute URL inconnue => "fallback ok"
 
+Route::get('/health', fn() => response('ok', 200));
+
+// Auth
 Route::get('/authentification', [MainController::class, 'showLoginForm'])
-    ->name('authentification');
+    ->name('authentification')
+    ->middleware('throttle:30,1');            // Form login limité
 
-Route::post('/authentification', [MainController::class, 'login'])->name('authentification.post');
+Route::post('/authentification', [MainController::class, 'login'])
+    ->name('authentification.post')
+    ->middleware('throttle:10,1');            // Tentatives login limitées
 
-
-Route::get('/deconnexion', function () {
-    session()->flush(); // supprime toutes les données de session
-    return redirect()->route('authentification');
-})->name('deconnexion');
-
-Route::get('/accueil', [MainController::class, 'accueil'])
-    ->name('accueil')->middleware('check.session');
-
-Route::post('/accueil/entree', [MainController::class, 'entree'])
-    ->name('accueil.entree')->middleware('check.session');
-
-Route::get('/interventions', [MainController::class, 'showInterventions'])
-    ->name('interventions.show')->middleware('check.session');
-
-Route::get('/interventions/{numInt}', [MainController::class, 'editIntervention'])
-    ->name('interventions.edit')->middleware('check.session');
-
-Route::post('/interventions/update/{numInt}', [MainController::class, 'updateIntervention'])
-    ->name('interventions.update')->middleware('check.session');
-
-Route::post('/interventions/{numInt}/rdv/temporaire',
-    [MainController::class,'rdvTemporaire']
-)->name('interventions.rdv.temporaire')->middleware('check.session');
-
-
-Route::post('/interventions/{numInt}/rdv/temporaire/check', [MainController::class, 'rdvTempCheck'])
-    ->name('rdv.temp.check');
-Route::post('/interventions/{numInt}/rdv/temporaire/purge', [MainController::class, 'rdvTempPurge'])
-    ->name('rdv.temp.purge');
-Route::delete(
-    '/interventions/{numInt}/rdv/temporaire/{id}',
-    [MainController::class, 'rdvTempDelete']
-)->name('rdv.temp.delete')->middleware('check.session');
-
-
+// Page d'erreur (utilisée par fallback)
 Route::get('/erreur', function () {
     $message = session('message', 'Une erreur est survenue.');
     return view('error', ['message' => $message]);
 })->name('erreur');
 
+// Déconnexion
+Route::get('/deconnexion', function () {
+    session()->flush();
+    return redirect()->route('authentification');
+})->name('deconnexion');
 
-Route::get('/api/planning/{codeTech}', [MainController::class,'apiPlanningTech'])
-    ->name('api.planning.tech')->middleware('check.session');
 
+
+// Contraintes de paramètres
+$NUMINT_RE = '^(?!(nouvelle|suggest-num)$)[A-Za-z0-9_-]+$';
+$CODETECH_RE  = '^[A-Za-z0-9_-]{2,10}$';
+
+// Groupe protégé : session + headers sécurité
+Route::middleware(['check.session', 'security.headers'])->group(function () use ($NUMINT_RE, $CODETECH_RE) {
+
+    // UI (lecture)
+    Route::get('/interventions', [MainController::class, 'showInterventions'])
+        ->name('interventions.show')
+        ->middleware('throttle:120,1');
+
+    Route::get('/interventions/nouvelle', [MainController::class, 'createIntervention'])
+        ->name('interventions.create')
+        ->middleware('throttle:60,1');
+
+    Route::get('/interventions/{numInt}', [MainController::class, 'editIntervention'])
+        ->name('interventions.edit')
+        ->where('numInt', $NUMINT_RE)
+        ->middleware(['check.numint', 'throttle:120,1']);
+
+    Route::get('/interventions/{numInt}/history', [MainController::class, 'history'])
+        ->name('interventions.history')
+        ->where('numInt', $NUMINT_RE)
+        ->middleware(['check.numint', 'throttle:120,1']);
+
+    // API internes / écritures (throttle plus strict)
+    Route::get('/interventions/suggest-num', [MainController::class, 'suggestNumInt'])
+        ->name('interventions.suggest')
+        ->middleware('throttle:60,1');
+
+    Route::post('/interventions', [MainController::class, 'storeIntervention'])
+        ->name('interventions.store')
+        ->middleware('throttle:30,1');
+
+    Route::post('/interventions/update/{numInt}', [MainController::class, 'updateIntervention'])
+        ->name('interventions.update')
+        ->where('numInt', $NUMINT_RE)
+        ->middleware(['check.numint', 'throttle:30,1']);
+
+    Route::post('/interventions/{numInt}/rdv/temporaire', [MainController::class, 'rdvTemporaire'])
+        ->name('interventions.rdv.temporaire')
+        ->where('numInt', $NUMINT_RE)
+        ->middleware(['check.numint', 'throttle:30,1']);
+
+    Route::post('/interventions/{numInt}/rdv/temporaire/check', [MainController::class, 'rdvTempCheck'])
+        ->name('rdv.temp.check')
+        ->where('numInt', $NUMINT_RE)
+        ->middleware(['check.numint', 'throttle:60,1']);
+
+    Route::post('/interventions/{numInt}/rdv/temporaire/purge', [MainController::class, 'rdvTempPurge'])
+        ->name('rdv.temp.purge')
+        ->where('numInt', $NUMINT_RE)
+        ->middleware(['check.numint', 'throttle:15,1']);
+
+    Route::delete('/interventions/{numInt}/rdv/temporaire/{id}', [MainController::class, 'rdvTempDelete'])
+        ->name('rdv.temp.delete')
+        ->where(['numInt' => $NUMINT_RE, 'id' => '^[0-9]+$'])
+        ->middleware(['check.numint', 'throttle:30,1']);
+
+    Route::get('/api/planning/{codeTech}', [MainController::class, 'apiPlanningTech'])
+        ->name('api.planning.tech')
+        ->where('codeTech', $CODETECH_RE)
+        ->middleware('throttle:60,1');
+});
+
+// Fallback propre
+Route::fallback(fn() => redirect()->route('erreur')->with('message', 'Page introuvable.'));

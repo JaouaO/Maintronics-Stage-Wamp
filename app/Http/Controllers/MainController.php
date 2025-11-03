@@ -3,18 +3,25 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\NotBlankRequest;
+use App\Http\Requests\ShowInterventionsRequest;
+use App\Http\Requests\StoreInterventionRequest;
+use App\Http\Requests\SuggestNumIntRequest;
 use App\Http\Requests\UpdateInterventionRequest;
+use App\Services\AccessInterventionService;
 use App\Services\DTO\RdvTemporaireDTO;
 use App\Services\DTO\UpdateInterventionDTO;
+use App\Services\InterventionHistoryService;
 use App\Services\InterventionService;
 use App\Services\PlanningService;
 use App\Services\TraitementDossierService;
 use App\Services\UpdateInterventionService;
+use App\Services\Utils\ParisClockService;
 use App\Services\Write\PlanningWriteService;
 use Illuminate\Http\Request;
 use App\Services\AuthService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\View;
 
 class MainController extends Controller
 {
@@ -25,6 +32,9 @@ class MainController extends Controller
     private PlanningWriteService $planningWriteService;
 
     private UpdateInterventionService $updateInterventionService;
+    private AccessInterventionService $accessInterventionService;
+    private InterventionHistoryService $historyService;
+    private ParisClockService $clockService;
 
     public function __construct(
         AuthService               $authService,
@@ -32,7 +42,10 @@ class MainController extends Controller
         TraitementDossierService  $traitementDossierService,
         PlanningService           $planningService,
         PlanningWriteService      $planningWriteService,
-        UpdateInterventionService $updateInterventionService
+        UpdateInterventionService $updateInterventionService,
+        AccessInterventionService $accessInterventionService,
+        InterventionHistoryService $historyService,
+        ParisClockService $clockService
     )
     {
         $this->authService = $authService;
@@ -41,13 +54,15 @@ class MainController extends Controller
         $this->planningService = $planningService;
         $this->planningWriteService = $planningWriteService;
         $this->updateInterventionService = $updateInterventionService;
+        $this->accessInterventionService = $accessInterventionService;
+        $this->historyService = $historyService;
+        $this->clockService = $clockService;
     }
 
     public function showLoginForm()
     {
         if (session()->has('id')) {
-            return redirect()->route('accueil', ['id' => session('id')]);
-        }
+            return redirect()->route('interventions.show', ['id' => session('id')]);        }
         return view('login');
     }
 
@@ -73,102 +88,119 @@ class MainController extends Controller
 
         if ($result['success']) {
             $this->authService->logAccess($id, $ip, $codeSal, $login['user']['CodeAgSal']);
-            return redirect()->route('accueil', ['id' => $id]);
+            return redirect()->route('interventions.show', ['id' => session('id')]);
         }
 
         return redirect()->route('erreur')->with('message', $result['message']);
     }
 
-    public function accueil(NotBlankRequest $request)
+    public function showInterventions(ShowInterventionsRequest $request)
     {
-        $numints = DB::table('t_intervention')
-            ->orderByDesc('DateIntPrevu')
-            ->orderByDesc('HeureIntPrevu')
-            ->whereNull('CodeTech')
-            ->limit(500)
-            ->pluck('NumInt');
+        $v = $request->validated();
+        $perPage = (int)($v['per_page'] ?? 10);
+        $q       = $v['q'] ?? null;
+        $scope   = $v['scope'] ?? null;
 
-        return view('accueil', compact('numints'));
+        $agencesAutorisees = (array) session('agences_autorisees', []);
+        $codeSal           = (string) session('codeSal', '');
+
+        $rows = $this->interventionService
+            ->listPaginatedSimple($perPage, $agencesAutorisees, $codeSal, $q, $scope);
+
+        return view('interventions.show', compact('rows','perPage','q','scope'));
     }
 
-    public function showInterventions(Request $request)
+
+    // GET /interventions/{numInt}/history
+    public function history(Request $request, string $numInt): \Illuminate\Http\Response
     {
-        $perPage = (int)$request->query('per_page', 10);
-        if (!in_array($perPage, [10, 25, 50, 100], true)) $perPage = 10;
+        // Garde d’accès par agence (préfixe du NumInt)
+        $agencesAutorisees = array_map('strtoupper', (array) $request->session()->get('agences_autorisees', []));
+        $agFromNum         = $this->accessInterventionService->agenceFromNumInt($numInt);
 
-        $rows = $this->interventionService->listPaginatedSimple($perPage);
-
-        $todoTagClass = [
-            'CONFIRMER_RDV' => 'blue',
-            'PLANIFIER_RDV' => 'amber',
-            'CLOTURER' => 'green',
-            'DIAGNOSTIC' => 'violet',
-        ];
-
-        return view('interventions.show', [
-            'rows' => $rows,
-            'todoTagClass' => $todoTagClass,
-            'perPage' => $perPage,
-        ]);
-    }
-
-    public function entree(NotBlankRequest $request)
-    {
-        $idFromUrl = $request->query('id');
-        $sessionId = session('id');
-        if (!$sessionId || $idFromUrl !== $sessionId) {
-            return redirect()->route('authentification')->with('message', 'Session invalide.');
+        if ($agFromNum === '' || !in_array($agFromNum, $agencesAutorisees, true)) {
+            abort(403, 'Vous n’avez pas accès à cette intervention.');
         }
 
-        $validated = $request->validate([
-            'num_int' => ['required', 'regex:/^[A-Za-z0-9_-]+$/', 'exists:t_intervention,NumInt'],
-            'agence' => ['required', 'regex:/^[A-Za-z0-9_-]+$/'],
-        ]);
+        $suivis = $this->historyService->fetchHistory($numInt);
 
-        return redirect()->route('interv.edit', ['numInt' => $validated['num_int']]);
+        if (\Illuminate\Support\Facades\View::exists('interventions.history_popup')) {
+            return response()->view('interventions.history_popup', [
+                'numInt' => $numInt,
+                'suivis' => $suivis,
+            ]);
+        }
+
+        return response()->view('interventions.history_fallback', [
+            'numInt' => $numInt,
+            'suivis' => $suivis,
+        ]);
     }
+
+
 
     public function editIntervention($numInt)
     {
         $payload = $this->traitementDossierService->loadEditPayload($numInt);
-
         if (!$payload['interv']) {
             return redirect()
-                ->route('accueil', ['id' => session('id')])
+                ->route('interventions.show', ['id' => session('id')])
                 ->with('error', 'Intervention introuvable.');
         }
 
-        return view('interventions.edit', $payload);
+        // ↓ Liste unifiée des personnes sélectionnables pour ce dossier
+        $people = $this->accessInterventionService->listPeopleForNumInt($numInt);
+        $agendaPeople = $this->accessInterventionService->listAgendaPeopleForNumInt($numInt);
+
+        // vous pouvez passer $people à vos partials au lieu de techniciens/salaries
+        return view('interventions.edit', $payload + [
+                'agendaPeople' => $agendaPeople, // {CodeSal, NomSal, access_level, is_tech, has_rdv}
+                'people' => $people, // Collection de {CodeSal, NomSal, CodeAgSal, access_level}
+            ]);
     }
 
     /** API planning */
+    // MainController.php — apiPlanningTech()
+
     public function apiPlanningTech(Request $request, $codeTech): \Illuminate\Http\JsonResponse
     {
         try {
+            $numInt = (string) $request->query('numInt', '');
+            $allowed = [];
+
+            if ($numInt !== '') {
+                $allowed = $this->accessInterventionService
+                    ->listAgendaPeopleForNumInt($numInt)
+                    ->pluck('CodeSal')
+                    ->map(fn($c) => strtoupper(trim((string)$c))) // normalisation
+                    ->unique()
+                    ->values()
+                    ->all();
+            }
+
             $payload = $this->planningService->getPlanning(
                 $codeTech,
                 $request->query('from'),
                 $request->query('to'),
                 (int)$request->query('days', 5),
-                'Europe/Paris'
+                'Europe/Paris',
+                $allowed
             );
             return response()->json($payload);
         } catch (\Throwable $e) {
-            Log::error('apiPlanningTech error', ['ex' => $e->getMessage()]);
-            return response()->json([
-                'ok' => false,
-                'msg' => 'Erreur SQL lors de la lecture du planning',
-                'sql' => [
-                    'info' => $e->getMessage(),
-                    'code' => method_exists($e, 'getCode') ? $e->getCode() : null,
-                    'state' => method_exists($e, 'getSqlState') ? $e->getSqlState() : null,
-                ],
-            ], 500);
+            report($e);
+            return response()->json(['ok' => false, 'msg' => 'Erreur SQL lors de la lecture du planning'], 500);
         }
     }
 
+
+
+
+
     public function updateIntervention(UpdateInterventionRequest $request, $numInt): \Illuminate\Http\RedirectResponse
     {
+
+        Log::debug('urgent?', ['raw' => $request->input('urgent'), 'bool' => $request->boolean('urgent')]);
         $dto = UpdateInterventionDTO::fromRequest($request, (string)$numInt);
 
         try {
@@ -243,7 +275,7 @@ class MainController extends Controller
         }
     }
 
-    public function rdvTempPurge(Request $request, string $numInt)
+    public function rdvTempPurge(Request $request, string $numInt): \Illuminate\Http\JsonResponse
     {
         try {
             $deleted = $this->planningWriteService->purgeTempsByNumInt($numInt);
@@ -270,6 +302,108 @@ class MainController extends Controller
             return response()->json(['ok' => false, 'msg' => $e->getMessage()], 500);
         }
     }
+// MainController.php (ajoute/replace seulement ces 2 méthodes)
 
+    public function createIntervention(Request $request)
+    {
+        $agencesAutorisees = (array) $request->session()->get('agences_autorisees', []);
+        $defaultAgence     = (string) $request->session()->get('defaultAgence', '');
+
+        if (empty($agencesAutorisees)) {
+            return redirect()->route('interventions.show')
+                ->with('error', 'Aucune agence autorisée pour ce compte.');
+        }
+
+        $now    = $this->clockService->now(); // ← au lieu de Carbon::now()
+        $agence = (string) (
+        $request->query('agence')
+            ?: ($defaultAgence !== '' ? $defaultAgence : (reset($agencesAutorisees) ?: ''))
+        );        try {
+            $suggest = $this->interventionService->nextNumInt($agence, $now); // $now est un Carbon
+        } catch (\Throwable $e) {
+            $suggest = '';
+        }
+
+        return view('interventions.create', [
+            'agences'  => $agencesAutorisees,
+            'agence'   => $agence,
+            'suggest'  => $suggest,
+            'defaults' => [
+                'DateIntPrevu'  => $now->toDateString(),
+                'HeureIntPrevu' => $now->format('H:i'),
+                'VilleLivCli'   => '',
+                'CPLivCli'      => '',
+                'Marque'        => '',
+                'Commentaire'   => '',
+                'Urgent'        => false,
+            ],
+            'codeSal' => (string) $request->session()->get('codeSal', ''),
+        ]);
+    }
+
+    public function suggestNumInt(SuggestNumIntRequest $request)
+    {
+        $ag    = strtoupper(trim($request->validated()['agence']));
+        $dateS = (string) $request->query('date', '');
+        $ref   = $dateS ? $this->clockService->parseLocal($dateS, '00:00')
+            : $this->clockService->now();
+
+        try {
+            // ✅ même règle que partout ailleurs
+            $num = $this->interventionService->nextNumInt($ag, $ref);
+            return response()->json(['ok' => true, 'numInt' => $num]);
+        } catch (\Throwable $e) {
+            // 🔁 Fallback local : AGENCE-YYMM-##### (5 chiffres, reset chaque mois)
+            $yymm = $ref->format('ym'); // ex: 2025-10 -> "2510"
+            $max  = DB::table('t_intervention')
+                ->where('NumInt', 'like', $ag.'-'.$yymm.'-%')
+                ->selectRaw("MAX(CAST(SUBSTRING_INDEX(NumInt, '-', -1) AS UNSIGNED)) as m")
+                ->value('m');
+
+            $next = (int)$max + 1;
+            $num  = sprintf('%s-%s-%05d', $ag, $yymm, $next ?: 1);
+            return response()->json(['ok' => true, 'numInt' => $num]);
+        }
+    }
+
+    public function storeIntervention(StoreInterventionRequest $request): \Illuminate\Http\RedirectResponse
+    {
+        // Données déjà nettoyées + validées par la FormRequest
+        $p = $request->validated();
+
+        // Date de référence pour le YYMM du NumInt (si jamais vide en entrée — garde-fou)
+        $dateRef = !empty($p['DateIntPrevu'])
+            ? $this->clockService->parseLocal($p['DateIntPrevu'], '00:00')
+            : $this->clockService->now();
+
+        // NumInt : en principe requis par la FormRequest ; fallback si champ finalement vide
+        $numInt = !empty($p['NumInt'])
+            ? $p['NumInt']
+            : $this->interventionService->nextNumInt($p['Agence'], $dateRef);
+
+        $codeSal = (string) $request->session()->get('codeSal', '');
+
+        // IMPORTANT : createMinimal doit écrire :
+        // - t_intervention : NumInt, Marque, VilleLivCli, CPLivCli (uniquement colonnes existantes)
+        // - t_actions_etat : urgent, rdv_prev_at (composé de DateIntPrevu+HeureIntPrevu), commentaire, reaffecte_code…
+        $this->updateInterventionService->createMinimal(
+            $numInt,
+            $p['Marque']        ?? null,
+            $p['VilleLivCli']   ?? null,
+            $p['CPLivCli']      ?? null,
+            $p['DateIntPrevu']  ?? null,
+            $p['HeureIntPrevu'] ?? null,
+            $p['Commentaire']   ?? null,
+            $codeSal ?: 'system',
+            ((string)($p['Urgent'] ?? '0') === '1'),
+            null
+        );
+
+        return redirect()
+            ->route('interventions.edit', $numInt)
+            ->with('ok', 'Intervention créée.');
+    }
+
+//return redirect('/ClientInfo?id=' . session('user')->idUser . '&action=dossier-detail&numInt=' . $numInt);
 }
 

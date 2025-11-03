@@ -78,6 +78,7 @@ class UpdateInterventionService
                 $planningDTO->ville    = $dto->ville;
                 $planningDTO->validated = true;
 
+                $this->planningWriteService->deleteTempBySlot($dto->numInt, (string)$dto->reaSal, $start);
                 $this->planningWriteService->purgeValidatedByNumInt($dto->numInt);
 
                 $this->planningWriteService->insertValidated($planningDTO, $dto->urgent);
@@ -119,15 +120,21 @@ class UpdateInterventionService
                 'objet_traitement' => $messageAffectation,
                 'contact_reel'     => $dto->contactReel,
                 'urgent'           => $dto->urgent ? 1 : 0,
+                'commentaire'      => $dto->commentaire,
             ];
             if ($hasRdv && $dto->reaSal) {
                 $start = $this->clock->parseLocal($dto->date, $dto->heure);
-                $etat['rdv_prev_at']    = $start;
-                $etat['tech_rdv_at']    = $start;
+
                 if($dto->actionType ==='appel'){
                     $etat['reaffecte_code'] = $dto->reaSal;
+                    $etat['rdv_prev_at']    = $start;
+
                 }elseif ($dto->actionType ==='rdv_valide'){
                     $etat['tech_code']      = $dto->reaSal;
+                    $etat['tech_rdv_at']    = $start;
+                    $etat['reaffecte_code'] = null;
+                    $etat['rdv_prev_at']    = null;
+
                 }
             }
 
@@ -169,6 +176,68 @@ class UpdateInterventionService
 
 
     }
+    public function createMinimal(
+        string $numInt,
+        ?string $marque,
+        ?string $ville,
+        ?string $cp,
+        ?string $datePrev,      // YYYY-MM-DD
+        ?string $heurePrev,     // HH:ii
+        ?string $commentaire,
+        ?string $auteur,
+        bool $urgent,
+        ?string $reaffecteCode
+    ): void
+    {
+        DB::transaction(function () use ($numInt, $marque, $ville, $cp, $datePrev, $heurePrev, $commentaire, $auteur, $urgent, $reaffecteCode) {
 
+            // 1) t_intervention
+            $fields = ['NumInt' => $numInt];
+            if ($marque !== null) $fields['Marque'] = $marque;
+            if ($ville  !== null) $fields['VilleLivCli'] = $ville;
+            if ($cp     !== null) $fields['CPLivCli']    = $cp;
+            if ($datePrev !== null) $fields['DateIntPrevu']  = $datePrev;
+            if ($heurePrev !== null) $fields['HeureIntPrevu'] = $heurePrev;
 
+            // upsert simple
+            DB::table('t_intervention')->updateOrInsert(['NumInt' => $numInt], $fields);
+
+            // 2) t_actions_etat (bits init à 0)
+            // Si vous avez des colonnes supplémentaires, ajoutez-les ici.
+            $etat = [
+                'NumInt'           => $numInt,
+                'bits_traitement'  => 0,
+                'bits_affectation' => 0,
+                'objet_traitement' => 'À préciser',
+                'urgent'           => $urgent ? 1 : 0,
+                'commentaire'      => $commentaire ?: null,
+                'reaffecte_code'   => $reaffecteCode ?: null,
+            ];
+
+            // Si on a une date/heure prévues, renseigner rdv_prev_at (si elle existe chez vous)
+            if ($datePrev && $heurePrev) {
+                try {
+                    $dt = Carbon::createFromFormat('Y-m-d H:i', $datePrev.' '.$heurePrev, 'Europe/Paris');
+                    // Colonne souvent présente : rdv_prev_at (DATETIME). Adaptez si nécessaire.
+                    $etat['rdv_prev_at'] = $dt->toDateTimeString();
+                } catch (\Throwable $e) {
+                    // tolérant : on ignore si parsing foire
+                }
+            }
+
+            // UPSERT avec fallback (si déjà présent, on met à jour les champs utiles)
+            $exists = DB::table('t_actions_etat')->where('NumInt', $numInt)->exists();
+            if ($exists) {
+                DB::table('t_actions_etat')->where('NumInt', $numInt)->update($etat);
+            } else {
+                DB::table('t_actions_etat')->insert($etat);
+            }
+
+            // 3) Journalisation minimale (optionnel)
+            if (!empty($auteur)) {
+                $meta = ['lab' => $commentaire ? mb_substr($commentaire, 0, 60) : null, 'urg' => $urgent ? 1 : null];
+                $this->historyWriteService->log($numInt, 'CREATED', $meta, 'Création', $commentaire ?: '', $auteur);
+            }
+        });
+    }
 }

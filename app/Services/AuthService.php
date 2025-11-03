@@ -34,24 +34,61 @@ class AuthService
     }
     public function logAccess($id, $ip, $codeSal, $codeAgSal)
     {
+        // Agence à journaliser (toujours une STRING)
+        $agToLog = (string) $codeAgSal;
 
-        if($codeAgSal=='PLUS'){
-            $codeAgSal = DB::table('t_resp')
+        // Si profils "globaux", on tente une agence par défaut concrète
+        if (in_array($codeAgSal, ['PLUS','ADMI','DOAG'], true)) {
+
+            // 1) Préférence t_resp.Defaut='O' pour ce salarié
+            $pref = DB::table('t_resp')
                 ->where('CodeSal', $codeSal)
                 ->where('Defaut', 'O')
-                ->pluck('CodeAgSal');
+                ->value('CodeAgSal'); // <-- une seule valeur (string)
+
+            if (is_string($pref) && $pref !== '') {
+                $agToLog = $pref;
+            } else {
+                // 2) Fallbacks par rôle
+                if ($codeAgSal === 'PLUS') {
+                    $fallback = DB::table('t_resp')
+                        ->where('CodeSal', $codeSal)
+                        ->orderBy('CodeAgSal')
+                        ->value('CodeAgSal');
+                    $agToLog = $fallback ?: 'PLUS';
+                } elseif ($codeAgSal === 'DOAG') {
+                    // DOAG : agences M* ou C* (ordre alpha)
+                    $fallback = DB::table('agence')
+                        ->where(function ($q) {
+                            $q->where('Code_ag', 'like', 'M%')
+                                ->orWhere('Code_ag', 'like', 'C%');
+                        })
+                        ->orderBy('Code_ag')
+                        ->value('Code_ag');
+                    $agToLog = $fallback ?: 'DOAG';
+                } else { // ADMI
+                    $fallback = DB::table('agence')
+                        ->orderBy('Code_ag')
+                        ->value('Code_ag');
+                    $agToLog = $fallback ?: 'ADMI';
+                }
+            }
         }
 
+        // Sécurité finale : cast en string court (au cas où)
+        $agToLog = (string) $agToLog;
+
         DB::table('t_log_util')->insert([
-            'id' => $id,
-            'IP' => $ip,
-            'Util' => $codeSal,
-            'Agence' =>  $codeAgSal,
-            'DateAcces' => Carbon::now('Europe/Paris')->format('Y-m-d'),
+            'id'         => $id,
+            'IP'         => $ip,
+            'Util'       => $codeSal,
+            'Agence'     => $agToLog, // toujours une chaîne
+            'DateAcces'  => Carbon::now('Europe/Paris')->format('Y-m-d'),
             'HeureAcces' => Carbon::now('Europe/Paris')->format('H:i'),
-            'Demat' => null
+            'Demat'      => null,
         ]);
     }
+
     public function generateId(): string
     {
         return Str::random(40);

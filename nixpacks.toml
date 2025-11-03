@@ -1,0 +1,17 @@
+[environment]
+COMPOSER_ALLOW_SUPERUSER = "1"
+
+[phases.install]
+cmds = [
+  "composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist --ignore-platform-reqs --no-scripts",
+  "if [ -f package.json ]; then NPM_CONFIG_PRODUCTION=false npm ci; else echo 'No package.json, skip npm ci'; fi",
+  "chmod -R +x /assets || true"
+]
+
+[phases.build]
+cmds = [
+  "if [ -f package.json ]; then (npm run prod || npm run production || echo 'No prod script; skip build'); else echo 'No package.json; skip build'; fi"
+]
+
+[start]
+cmd = "/assets/boot.sh"

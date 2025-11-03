@@ -17,24 +17,26 @@
                         class="{{ $errors->has('rea_sal') ? 'is-invalid' : '' }}"
                         aria-invalid="{{ $errors->has('rea_sal') ? 'true' : 'false' }}">
                         <option value="">— Sélectionner —</option>
-                        @if(($techniciens ?? collect())->count())
-                            <optgroup label="Techniciens">
-                                @foreach($techniciens as $t)
-                                    <option value="{{ $t->CodeSal }}" {{ old('rea_sal') == $t->CodeSal ? 'selected' : '' }}>
-                                        {{ $t->NomSal }} ({{ $t->CodeSal }})
-                                    </option>
-                                @endforeach
-                            </optgroup>
-                        @endif
-                        @if(($salaries ?? collect())->count())
-                            <optgroup label="Salariés">
-                                @foreach($salaries as $s)
-                                    <option value="{{ $s->CodeSal }}" {{ old('rea_sal') == $s->CodeSal ? 'selected' : '' }}>
-                                        {{ $s->NomSal }} ({{ $s->CodeSal }})
-                                    </option>
-                                @endforeach
-                            </optgroup>
-                        @endif
+
+                        @php
+                            // On groupe par niveau d'accès
+                            $byLevel = ($people ?? collect())->groupBy('access_level');
+
+                            // Ordre fixe des niveaux
+                            $levels = ['interne' => 'Interne', 'direction' => 'Direction', 'externe' => 'Externe'];
+                        @endphp
+
+                        @foreach($levels as $lvlKey => $lvlLabel)
+                            @if(($byLevel[$lvlKey] ?? collect())->count())
+                                <optgroup label="{{ $lvlLabel }}">
+                                    @foreach($byLevel[$lvlKey]->sortBy('NomSal') as $p)
+                                        <option value="{{ $p->CodeSal }}" {{ old('rea_sal') == $p->CodeSal ? 'selected' : '' }}>
+                                            {{ $p->NomSal }} ({{ $p->CodeSal }}) — {{ $p->CodeAgSal }}
+                                        </option>
+                                    @endforeach
+                                </optgroup>
+                            @endif
+                        @endforeach
                     </select>
 
                     {{-- URGENT --}}

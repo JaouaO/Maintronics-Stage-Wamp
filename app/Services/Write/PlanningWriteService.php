@@ -8,13 +8,18 @@ use Illuminate\Support\Facades\DB;
 
 class PlanningWriteService
 {
+    // PlanningWriteService.php
     public function upsertTemp(PlanningDTO $dto): string
     {
-        $exists = DB::table('t_planning_technicien')->where([
-            ['NumIntRef', '=', $dto->numInt],
-            ['StartDate', '=', $dto->start->toDateString()],
-            ['StartTime', '=', $dto->start->format('H:i:s')],
-        ])->first();
+        $exists = DB::table('t_planning_technicien')
+            ->where('NumIntRef', $dto->numInt)
+            ->where('StartDate', $dto->start->toDateString())
+            ->where('StartTime', $dto->start->format('H:i:s'))
+            ->where('CodeTech',  $dto->codeTech) // ← ajoutez le technicien
+            ->where(function($w){                 // ← ne viser QUE les temporaires
+                $w->whereNull('IsValidated')->orWhere('IsValidated', 0);
+            })
+            ->first();
 
         $payload = [
             'CodeTech'    => $dto->codeTech,
@@ -23,20 +28,37 @@ class PlanningWriteService
             'EndDate'     => $dto->end->toDateString(),
             'EndTime'     => $dto->end->format('H:i:s'),
             'NumIntRef'   => $dto->numInt,
-            'Label'       => (string) $dto->label,
-            'Commentaire' => (string) $dto->commentaire,
+            'Label'       => (string)$dto->label,
+            'Commentaire' => (string)$dto->commentaire,
             'CPLivCli'    => $dto->cp,
             'VilleLivCli' => $dto->ville,
             'IsValidated' => 0,
         ];
 
         if ($exists) {
-            DB::table('t_planning_technicien')->where('id', $exists->id)->update($payload);
+            DB::table('t_planning_technicien')
+                ->where('id', $exists->id) // on ne touchera jamais un validé
+                ->update($payload);
             return 'updated';
         }
+
+        // (option protection) : si un validé existe exactement au même slot, on refuse la création du temp
+        $validatedExists = DB::table('t_planning_technicien')
+            ->where('NumIntRef', $dto->numInt)
+            ->where('StartDate', $dto->start->toDateString())
+            ->where('StartTime', $dto->start->format('H:i:s'))
+            ->where('IsValidated', 1)
+            ->exists();
+
+        if ($validatedExists) {
+            // laissez remonter l’info : l’API rdv_temporaire renverra une erreur lisible au front
+            throw new \InvalidArgumentException('Un RDV validé existe déjà à ce créneau.');
+        }
+
         DB::table('t_planning_technicien')->insert($payload);
         return 'inserted';
     }
+
 
     public function insertValidated(PlanningDTO $dto, bool $urgent): void
     {
@@ -92,6 +114,19 @@ class PlanningWriteService
             })
             ->delete();
     }
+
+    // PlanningWriteService.php
+    public function deleteTempBySlot(string $numInt, string $codeTech, \Carbon\Carbon $start): int
+    {
+        return DB::table('t_planning_technicien')
+            ->where('NumIntRef', $numInt)
+            ->where('CodeTech',  $codeTech)
+            ->where('StartDate', $start->toDateString())
+            ->where('StartTime', $start->format('H:i:s'))
+            ->where(function($w){ $w->whereNull('IsValidated')->orWhere('IsValidated', 0); })
+            ->delete();
+    }
+
 }
 
 

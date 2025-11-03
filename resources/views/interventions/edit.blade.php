@@ -37,6 +37,11 @@
                 ])
 
                 @include('interventions.partials.commentaire')
+                <a class="btn btn-history"
+                   href="{{ route('interventions.show') }}"
+                   title="liste_interv">
+                     Revenir aux interventions
+                </a>
             </section>
 
             {{-- COLONNE DROITE --}}
@@ -49,8 +54,9 @@
                 ])
 
                 @include('interventions.partials.agenda', [
-                    'techniciens' => $techniciens,
-                ])
+     'agendaPeople' => $agendaPeople,
+     'techniciens'  => $techniciens,
+ ])
             </section>
         </div>
     </form>

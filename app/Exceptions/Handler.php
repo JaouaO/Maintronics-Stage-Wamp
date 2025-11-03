@@ -4,7 +4,9 @@ namespace App\Exceptions;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Http\Exceptions\PostTooLargeException;
+use Illuminate\Session\TokenMismatchException;
 use Throwable;
+
 
 class Handler extends ExceptionHandler
 {
@@ -49,17 +51,17 @@ class Handler extends ExceptionHandler
      *
      * @throws \Throwable
      */
-    public function render($request, Throwable $exception)
+    public function render($request, Throwable $e)
     {
-        if ($exception instanceof PostTooLargeException) {
-            // Réponse courte côté AJAX
+        if ($e instanceof TokenMismatchException) {
+            // Réponse minimale, stable en test et en prod
             if ($request->expectsJson()) {
-                return response()->json(['ok'=>false, 'msg'=>'Échec de l’enregistrement'], 413);
+                return response()->json(['message' => 'Session expirée ou CSRF manquant.'], 419);
             }
-            // Page classique
-            return redirect()->back()->with('error', 'Échec de l’enregistrement');
+            return response('Session expirée ou CSRF manquant.', 419);
         }
 
-        return parent::render($request, $exception);
+        return parent::render($request, $e);
     }
+
 }

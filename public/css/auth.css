@@ -1,0 +1,77 @@
+/* ===== Auth & Error (scoped, minimal) ===== */
+
+/* Shell : carte centrée, placée un peu haut */
+.auth-shell, .error-shell{
+    min-height:100dvh;
+    display:grid;
+    place-items:start center;
+    padding:clamp(8vh,14vh,18vh) 16px 0;
+    background:var(--bg,#f6f7fb);
+}
+
+/* Typo / couleurs cohérentes avec le reste */
+.auth-app, .error-app{
+    font-family:Inter,system-ui,"Segoe UI",Arial,sans-serif;
+    color:var(--ink,#1f2430);
+}
+
+/* Cartes compactes */
+.auth-card, .error-card{
+    border:1px solid transparent;
+    border-radius:14px;
+    background:
+        linear-gradient(var(--panel,#fff),var(--panel,#fff)) padding-box,
+        linear-gradient(135deg,#e9f2ff,#f6ecff) border-box;
+    box-shadow:0 12px 28px rgba(31,36,48,.10),0 1px 0 rgba(31,36,48,.03);
+}
+.auth-card{ width:min(96vw,540px); }
+.error-card{ width:min(96vw,560px); }
+.auth-card .cardBody, .error-card .cardBody{ padding:20px 18px; }
+
+/* Titre & intro */
+.auth-app .title-row{ display:flex; align-items:center; gap:10px; margin:4px 0 12px; }
+.auth-app .title-row h1,
+.error-app h1{ margin:0; font-size:20px; }
+.auth-app .lead{ margin:2px 0 10px; color:var(--mut,#657089); font-size:13px; }
+
+/* Formulaire (login) */
+.auth-app .form-grid{ display:grid; grid-template-columns:1fr; gap:12px; align-items:stretch; }
+.auth-app .form-grid > *{ min-width:0; } /* évite overflow */
+.auth-app label{ display:block; margin-bottom:6px; color:var(--mut,#657089); font-size:12.5px; }
+.auth-app input[type="text"]{
+    width:100%; max-width:100%; box-sizing:border-box;
+    padding:9px 12px; border:1px solid var(--line,#d9deea); border-radius:10px; background:#fff;
+    font:14.5px/1.3 Inter,system-ui; color:var(--ink,#1f2430);
+}
+.auth-app input[type="text"]::placeholder{ color:#8b93a7; }
+.auth-app input[type="text"]:focus{
+    outline:none; border-color:#cfe0ff; box-shadow:0 0 0 3px #e9f2ff;
+}
+.auth-app .is-invalid{ border-color:#d33; outline-color:#d33; }
+.auth-app .form-error{ color:#b21; font-size:12px; margin-top:4px; }
+
+/* Alertes */
+.auth-app .alert, .error-app .alert{
+    padding:8px 12px; margin:10px 0 12px;
+    border:1px solid var(--line,#d9deea); border-radius:8px; background:#fff;
+}
+.auth-app .alert-danger, .error-app .alert-danger{ background:#fde8e8; border-color:#f5b5b5; color:#9f2b2b; }
+.auth-app .alert-success, .error-app .alert-success{ background:#e7fbef; border-color:#bfe6cc; color:#0d6b2d; }
+
+/* Boutons */
+.auth-app .actions, .error-app .actions{ display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; }
+.auth-app .btn, .error-app .btn{
+    border:1px solid var(--line,#d9deea); background:#eef3ff;
+    padding:7px 12px; border-radius:8px; font-size:13px; text-decoration:none; color:inherit; cursor:pointer;
+}
+.auth-app .btn:hover, .error-app .btn:hover{ background:#e8f1ff; }
+.auth-app .btn-primary, .error-app .btn-primary{ background:#2a62e0; color:#fff; border-color:#2051c4; }
+.auth-app .btn-primary:hover, .error-app .btn-primary:hover{ background:#224fcf; }
+.auth-app .btn-light, .error-app .btn-light{ background:#fff; border-color:var(--line,#d9deea); }
+
+/* Bloc tête d’erreur */
+.error-app .error-head{ display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+.error-app .error-ico{
+    width:36px; height:36px; border-radius:10px; display:grid; place-items:center;
+    background:#fde8e8; color:#9f2b2b; border:1px solid #f2b6b6;
+}

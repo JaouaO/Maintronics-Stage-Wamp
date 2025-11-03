@@ -8,14 +8,18 @@
     ],
     "license": "MIT",
     "require": {
-        "php": "^7.4",
+        "php": ">=7.4.33",
+        "ext-pdo_mysql": "*",
+        "ext-zip": "*",
+        "ext-gd": "*",
         "fideloper/proxy": "^4.4",
         "fruitcake/laravel-cors": "^2.0",
         "guzzlehttp/guzzle": "^6.3.1|^7.0.1",
         "laravel/framework": "^7.29",
         "laravel/tinker": "^2.5",
         "ext-intl": "*",
-        "ext-json": "*"
+        "ext-json": "*",
+        "ext-mbstring": "*"
     },
     "require-dev": {
         "barryvdh/laravel-debugbar": "^3.7",

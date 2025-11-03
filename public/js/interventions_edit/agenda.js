@@ -27,8 +27,10 @@ export function initAgenda() {
     if (!elSel || !calWrap || !calGrid || !listRows) return;
 
     // Numéro d'intervention du formulaire courant (injecté sur le bouton historique)
-    const currentNumInt = document.getElementById('openHistory')?.dataset.numInt || '';
-
+    const currentNumInt =
+        (window.APP && window.APP.numInt) ||
+        document.getElementById('openHistory')?.dataset.numInt ||
+        '';
     const state = {
         cur: startOfMonth(new Date()),
         mode: 'month', // 'month' | 'day'
@@ -143,30 +145,67 @@ export function initAgenda() {
 
     async function fetchMonthData(d) {
         const first = startOfMonth(d);
-        const last = endOfMonth(d);
-        const k = monthKey(first);
+
+        // bornes de la grille (6 semaines = 42 cases)
+        const gridStart = (() => {
+            const s = new Date(first);
+            const dow = (s.getDay() + 6) % 7; // lundi=0
+            s.setDate(s.getDate() - dow);
+            s.setHours(0, 0, 0, 0);
+            return s;
+        })();
+        const gridEnd = addDays(gridStart, 41);
+        gridEnd.setHours(23, 59, 59, 999);
+
+        // cache key spécifique à la plage réelle affichée
+        const k = `${state.tech}|${ymd(gridStart)}_${ymd(gridEnd)}`;
+
         if (state.cache.has(k)) return state.cache.get(k);
 
         calGrid.classList.add('is-loading');
         const myToken = ++state.reqToken;
 
         const url = (window.APP?.apiPlanningRoute || '').replace('__X__', encodeURIComponent(state.tech));
-        const qs = `from=${ymd(first)}&to=${ymd(last)}`;
+        const qs = `from=${ymd(gridStart)}&to=${ymd(gridEnd)}&numInt=${encodeURIComponent(currentNumInt)}&debug=1`;
 
         let payload = {events: [], byDay: new Map()};
         try {
+            // ← un seul fetch ici
             const res = await fetch(`${url}?${qs}`, {
                 credentials: 'same-origin',
                 headers: {'Accept': 'application/json'}
             });
             const out = await res.json().catch(() => ({ok: false, events: []}));
-            const events = out && out.ok && Array.isArray(out.events) ? out.events : [];
+            const eventsRaw = (out && out.ok && Array.isArray(out.events)) ? out.events : [];
+
+// 1) Normalisation client
+            const eventsRawFixed = eventsRaw.map(ev => ({
+                ...ev,
+                code_tech: String(ev.code_tech || '').trim().toUpperCase()
+            }));
+
+// 2) Filtrage client (UNIQUEMENT en mode _ALL)
+            let events = eventsRawFixed;
+            if (state.tech === '_ALL') {
+                const allowed = new Set(((window.APP && window.APP.agendaAllowedCodes) || [])
+                    .map(c => String(c).trim().toUpperCase()));
+
+                if (allowed.size) {
+                    events = eventsRawFixed.filter(ev => {
+                        if (allowed.has(ev.code_tech)) return true;
+                        // wildcard local: "CES*" = préfixe "CES"
+                        for (const a of allowed) {
+                            if (a.endsWith('*') && ev.code_tech.startsWith(a.slice(0, -1))) return true;
+                        }
+                        return false;
+                    });
+                }
+            }
 
             const byDay = new Map();
             for (const ev of events) {
                 const dKey = (ev.start_datetime || '').slice(0, 10);
                 if (!dKey) continue;
-
                 const bucket = byDay.get(dKey) || {
                     list: [],
                     urgentCount: 0,
@@ -176,21 +215,15 @@ export function initAgenda() {
                 };
                 bucket.list.push(ev);
                 bucket.count++;
-
                 if (ev.is_urgent) bucket.urgentCount++;
-
                 const isTemp = (ev.is_validated === 0 || ev.is_validated === false);
                 const isValid = (ev.is_validated === 1 || ev.is_validated === true);
-
                 if (ev.num_int === currentNumInt) {
                     if (isTemp) bucket.hasMyTemp = true;
                     if (isValid) bucket.hasMyValidated = true;
                 }
-
                 byDay.set(dKey, bucket);
             }
-
-
             payload = {events, byDay};
             state.cache.set(k, payload);
         } finally {
@@ -237,12 +270,14 @@ export function initAgenda() {
 
             if (info.count > 0) cell.classList.add('has-events');
             if (info.urgentCount > 0) cell.classList.add('has-urgent');
-            if (!inMonth || isBeforeToday(d)) cell.classList.add('muted');
+            if (isBeforeToday(d)) cell.classList.add('muted');
+            if (!inMonth && !isBeforeToday(d)) cell.classList.add('muted2');
 
 // Ordre des signaux : validé (vert) -> urgent (rouge) -> temporaire (bleu)
             const signals = [];
-            if (info.hasMyValidated)  signals.push('green');            if (info.urgentCount > 0) signals.push('red');
-            if (info.hasMyTemp)   signals.push('blue');
+            if (info.hasMyValidated) signals.push('green');
+            if (info.urgentCount > 0) signals.push('red');
+            if (info.hasMyTemp) signals.push('blue');
 
 // Si aucun signal : on affiche juste le dot blanc.
 // S'il y a des signaux : le 1er remplace la base, les autres se placent à droite.
@@ -251,24 +286,25 @@ export function initAgenda() {
                 dotsHtml = `<span class="dot-base" aria-hidden="true"></span>`;
             } else {
                 const first = `<span class="dot ${signals[0]}" aria-hidden="true"></span>`;
-                const rest  = signals.slice(1).map(c => `<span class="dot ${c}" aria-hidden="true"></span>`).join('');
+                const rest = signals.slice(1).map(c => `<span class="dot ${c}" aria-hidden="true"></span>`).join('');
                 dotsHtml = `${first}${rest}`;
             }
 
             cell.setAttribute('data-date', key);
             cell.innerHTML = `
-  <span class="d">${String(d.getDate()).padStart(2,'0')}</span>
+  <span class="d">${String(d.getDate()).padStart(2, '0')}</span>
   <span class="dots">${dotsHtml}</span>
 `;
 
-            cell.addEventListener('click', () => { state.day = d; openDay(state.day); });
+            cell.addEventListener('click', () => {
+                state.day = d;
+                openDay(state.day);
+            });
             cells.push(cell);
 
         }
 
         calGrid.replaceChildren(...cells);
-        const todayCell = calGrid.querySelector(`.cal-cell[data-date="${ymd(state.day || new Date())}"]`);
-        if (todayCell) todayCell.setAttribute('aria-current', 'date');
         calWrap.classList.remove('collapsed');
         calToggle.setAttribute('aria-expanded', 'true');
         state.mode = 'month';
@@ -307,10 +343,10 @@ export function initAgenda() {
     }
 
     // --- Lignes du jour : on remet l'icône "i", tout se passe dans la modale
-    function makeRow(ev){
+    function makeRow(ev) {
         const tr = document.createElement('tr');
-        const isTemp   = (ev && (ev.is_validated===0 || ev.is_validated===false));
-        const isValid  = (ev && (ev.is_validated===1 || ev.is_validated===true));
+        const isTemp = (ev && (ev.is_validated === 0 || ev.is_validated === false));
+        const isValid = (ev && (ev.is_validated === 1 || ev.is_validated === true));
         const sameThis = (ev && ev.num_int === currentNumInt);
 
         if (ev && ev.is_urgent) tr.classList.add('urgent');
@@ -320,10 +356,10 @@ export function initAgenda() {
         // ✅ vert pâle si "validé" pour CE dossier
         if (isValid && sameThis) tr.classList.add('valide');
 
-        const hhmm   = timeHHMM(ev.start_datetime);
-        const code   = ev.code_tech || '';
-        const contact= ev.contact || '—';
-        const label  = ev.label || ev.num_int || '';
+        const hhmm = timeHHMM(ev.start_datetime);
+        const code = ev.code_tech || '';
+        const contact = ev.contact || '—';
+        const label = ev.label || ev.num_int || '';
 
         // bouton "i" (modale détails + actions)
         const btn = document.createElement('button');
@@ -340,7 +376,7 @@ export function initAgenda() {
         const tdLab = document.createElement('td');
         tdLab.textContent = label;
 
-        if (ev.is_urgent){
+        if (ev.is_urgent) {
             const b = document.createElement('span');
             b.className = 'badge badge-urgent';
             b.textContent = 'URGENT';
@@ -349,7 +385,7 @@ export function initAgenda() {
         }
 
 // pastille TEMP (non grasse)
-        if (isTemp){
+        if (isTemp) {
             const t = document.createElement('span');
             t.className = 'badge badge-temp';
             t.textContent = 'TEMP';
@@ -383,7 +419,8 @@ export function initAgenda() {
         if (ev.cp || ev.ville) parts.push(`<div class="section"><div class="section-title">Lieu</div><div>${escapeHtml([ev.cp, ev.ville].filter(Boolean).join(' '))}</div></div>`);
         if (ev.marque) parts.push(`<div class="section"><div class="section-title">Marque</div><div>${escapeHtml(ev.marque)}</div></div>`);
         if (ev.is_urgent) parts.push(`<div class="section"><span class="badge badge-urgent">URGENT</span></div>`);
-        if (isTemp){parts.push(`<div class="section"><span class="badge badge-temp">TEMP</span></div>`);
+        if (isTemp) {
+            parts.push(`<div class="section"><span class="badge badge-temp">TEMP</span></div>`);
         }
         // Actions uniquement si c'est un RDV temporaire du dossier courant
         if (isTemp && sameThis) {
@@ -459,7 +496,7 @@ export function initAgenda() {
         btnVal.click(); // ta logique existante fera le check/purge/validation + historique
     }
 
-    async function onDeleteFromModal(ev){
+    async function onDeleteFromModal(ev) {
         const sure = confirm("Supprimer ce rendez-vous temporaire ?");
         if (!sure) return;
 
@@ -484,7 +521,7 @@ export function initAgenda() {
                 }
             });
 
-            const j = await res.json().catch(() => ({ ok: false }));
+            const j = await res.json().catch(() => ({ok: false}));
             if (!res.ok || !j.ok) {
                 throw new Error(j?.msg || 'Suppression échouée');
             }
@@ -513,4 +550,6 @@ export function initAgenda() {
         const mi = String(d.getMinutes()).padStart(2, '0');
         return `${dd}/${mm}/${yyyy} ${hh}:${mi}`;
     }
+
+    window.__agendaHasValidatedForThisDossier = alreadyHasValidatedForThisDossierAnywhere;
 }

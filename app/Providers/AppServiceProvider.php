@@ -25,7 +25,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot()
     {
         if (app()->runningInConsole()) return;
-
+        if (app()->environment('production')) URL::forceScheme('https');
         if (session()->has('id')) {
             URL::defaults(['id' => session('id')]);
         }

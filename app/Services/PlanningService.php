@@ -19,75 +19,109 @@ class PlanningService
      * @param array|null  $allowedTechs  Liste blanche de codes techniciens quand $codeTech === "_ALL" (optionnel)
      * @return array{ok:bool,from:string,to:string,events:array<int,array<string,mixed>>}
      */
-    public function getPlanning($codeTech, $from = null, $to = null, $days = null, $tz = 'Europe/Paris', $allowedTechs = null)
-    {
-        // 1) Détermine la plage de dates
+    public function getPlanning(
+        $codeTech,
+        $from = null,
+        $to = null,
+        $days = null,
+        $tz = 'Europe/Paris',
+        ?array $allowedCodes = null
+    ) {
         $range = $this->computeRange($from, $to, $days, $tz);
-        $start = $range['start']; // Carbon
-        $end   = $range['end'];   // Carbon
+        $start = $range['start']->toDateString();
+        $end   = $range['end']->toDateString();
 
-        // 2) Requête unique
+        // Normalisation whitelist
+        $allowed = array_values(array_unique(array_map(
+            fn($c) => strtoupper(trim((string)$c)), $allowedCodes ?? []
+        )));
+        $exacts   = array_values(array_filter($allowed, fn($c) => strpos($c, '*') === false));
+        $prefixes = array_values(array_map(
+            fn($c) => rtrim($c, '*'),
+            array_filter($allowed, fn($c) => substr($c, -1) === '*')
+        ));
+
         $q = DB::table('t_planning_technicien as p')
             ->select(
-                'p.id as rid', 'p.CodeTech',
-                'p.StartDate', 'p.StartTime',
-                'p.EndDate',   'p.EndTime',
-                'p.NumIntRef',
-                'p.Label',
-                'p.IsValidated',
-                'p.Commentaire',        // NEW
-                'p.CPLivCli',           // NEW
-                'p.VilleLivCli',        // NEW
-                'p.IsUrgent',           // <-- AJOUT
-                'i.Marque',             // NEW
-                'e.contact_reel as Contact'
+                'p.id as rid',
+                DB::raw('TRIM(UPPER(p.CodeTech)) as CodeTech'),
+                'p.StartDate','p.StartTime','p.EndDate','p.EndTime',
+                'p.NumIntRef','p.Label','p.IsValidated','p.Commentaire',
+                'p.CPLivCli','p.VilleLivCli','p.IsUrgent',
+                'i.Marque','e.contact_reel as Contact'
             )
             ->leftJoin('t_actions_etat as e', 'e.NumInt', '=', 'p.NumIntRef')
-            ->whereBetween('p.StartDate', [$start->toDateString(), $end->toDateString()])
-            ->leftJoin('t_intervention as i', 'i.NumInt', '=', 'p.NumIntRef') // NEW
-            ->whereBetween('p.StartDate', [$start->toDateString(), $end->toDateString()])
-            ->orderBy('p.StartDate')
-            ->orderBy('p.StartTime');
+            ->leftJoin('t_intervention as i', 'i.NumInt', '=', 'p.NumIntRef')
+            ->whereBetween('p.StartDate', [$start, $end])
+            ->orderBy('p.StartDate')->orderBy('p.StartTime');
 
+        // 1) Tech précis => on montre tout son agenda (normalisé)
         if ($codeTech !== '_ALL') {
-            $q->where('p.CodeTech', $codeTech);
-        } elseif (is_array($allowedTechs) && !empty($allowedTechs)) {
-            // Optionnel: filtrer _ALL avec une liste blanche
-            $q->whereIn('p.CodeTech', $allowedTechs);
+            $q->where(DB::raw('TRIM(UPPER(p.CodeTech))'), '=', strtoupper(trim((string)$codeTech)));
+
+            // Option sécurité : si whitelist fournie et que le tech n’y est pas, on retourne vide.
+            if (!empty($allowed) && !self::matchesAllowed(strtoupper(trim((string)$codeTech)), $exacts, $prefixes)) {
+                return ['ok'=>true,'from'=>$start,'to'=>$end,'events'=>[]];
+            }
+        }
+        // 2) Mode _ALL => restreint aux personnes autorisées (exacts + wildcards)
+        else {
+            if (!empty($exacts) || !empty($prefixes)) {
+                $q->where(function($w) use ($exacts, $prefixes) {
+                    if (!empty($exacts)) {
+                        $w->whereIn(DB::raw('TRIM(UPPER(p.CodeTech))'), $exacts);
+                    }
+                    if (!empty($prefixes)) {
+                        $w->orWhere(function($or) use ($prefixes) {
+                            foreach ($prefixes as $pfx) {
+                                $or->orWhere(DB::raw('TRIM(UPPER(p.CodeTech))'), 'like', $pfx.'%');
+                            }
+                        });
+                    }
+                });
+            } else {
+                // Pas d’autorisés => rien à afficher
+                return ['ok'=>true,'from'=>$start,'to'=>$end,'events'=>[]];
+            }
         }
 
         $rows = $q->get();
 
-        // 3) Mapping
         $events = [];
-        foreach ($rows as $row) {
-            $startIso = $row->StartDate . 'T' . ($row->StartTime ?: '00:00:00');
-            $endIso   = !empty($row->EndDate) ? ($row->EndDate . 'T' . ($row->EndTime ?: '00:00:00')) : null;
+        foreach ($rows as $r) {
+            $startIso = $r->StartDate.'T'.($r->StartTime ?: '00:00:00');
+            $endIso   = !empty($r->EndDate) ? ($r->EndDate.'T'.($r->EndTime ?: '00:00:00')) : null;
 
             $events[] = [
-                'id' => $row->rid,
-                'code_tech'      => $row->CodeTech,
+                'id' => $r->rid,
+                'code_tech'      => $r->CodeTech, // déjà TRIM/UPPER
                 'start_datetime' => $startIso,
                 'end_datetime'   => $endIso,
-                'label'          => $row->Label,
-                'num_int'        => $row->NumIntRef,
-                'contact'        => $row->Contact ?: null,
-                'is_validated'   =>  isset($row->IsValidated) ? ((int)$row->IsValidated === 1) : null,
-                'commentaire'    => $row->Commentaire ?: null,      // NEW
-                'cp'             => $row->CPLivCli ?: null,         // NEW
-                'ville'          => $row->VilleLivCli ?: null,      // NEW
-                'marque'         => $row->Marque ?: null,
-                'is_urgent' => (int)$row->IsUrgent === 1,// NEW
+                'label'          => $r->Label,
+                'num_int'        => $r->NumIntRef,
+                'contact'        => $r->Contact ?: null,
+                'is_validated'   => isset($r->IsValidated) ? ((int)$r->IsValidated === 1) : null,
+                'commentaire'    => $r->Commentaire ?: null,
+                'cp'             => $r->CPLivCli ?: null,
+                'ville'          => $r->VilleLivCli ?: null,
+                'marque'         => $r->Marque ?: null,
+                'is_urgent'      => (int)$r->IsUrgent === 1,
             ];
         }
 
-        return [
-            'ok'     => true,
-            'from'   => $start->format('Y-m-d'),
-            'to'     => $end->format('Y-m-d'),
-            'events' => $events,
-        ];
+        return ['ok'=>true,'from'=>$start,'to'=>$end,'events'=>$events];
     }
+
+    private static function matchesAllowed(string $code, array $exacts, array $prefixes): bool
+    {
+        if (in_array($code, $exacts, true)) return true;
+        foreach ($prefixes as $p) {
+            if (str_starts_with($code, $p)) return true;
+        }
+        return false;
+    }
+
+
 
     /**
      * Détermine la plage start/end à partir de from/to ou days.

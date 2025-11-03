@@ -3,13 +3,15 @@
         serverNow: "{{ $serverNow }}",
         sessionId: "{{ session('id') }}",
         apiPlanningRoute: "{{ route('api.planning.tech', ['codeTech' => '__X__']) }}",
-        TECHS: @json($techniciens->pluck('CodeSal')->values()),
-        NAMES: @json($techniciens->mapWithKeys(fn($t)=>[$t->CodeSal=>$t->NomSal])),
-        techs: @json($techniciens->pluck('CodeSal')->values()),
-        names: @json($techniciens->mapWithKeys(fn($t)=>[$t->CodeSal=>$t->NomSal])),
+        numInt: "{{ $interv->NumInt }}", // 👈 important
+        // Pour le filtre côté client (sécurité supplémentaire côté UI)
+        agendaAllowedCodes: @json(($agendaPeople ?? collect())->pluck('CodeSal')->values()),
+        // Pour le sélecteur
+        TECHS: @json(($agendaPeople ?? collect())->pluck('CodeSal')->values()),
+        NAMES: @json(($agendaPeople ?? collect())->mapWithKeys(fn($p)=>[$p->CodeSal=>$p->NomSal])),
     };
-    window.APP_SESSION_ID = "{{ session('id') }}";
 </script>
+
 @php
     $v = filemtime(public_path('js/interventions_edit/main.js'));
 @endphp

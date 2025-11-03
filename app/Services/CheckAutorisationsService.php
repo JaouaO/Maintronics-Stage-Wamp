@@ -96,6 +96,11 @@ class CheckAutorisationsService
             $data->agences_autorisees = [$codeAg];
         }
 
+        $data->defaultAgence = $this->computeDefaultAgence(
+            $data->agences_autorisees,  // array
+            $codeAg,                    // CodeAgSal
+            $codeSal                    // CodeSal
+        );
         return $data;
     }
 
@@ -145,4 +150,48 @@ class CheckAutorisationsService
 
         return false;
     }
+    /**
+     * Calcule l'agence par défaut pour la session utilisateur.
+     * Règle :
+     * - Si CodeAgSal ∈ {ADMI, PLUS, DOAG} :
+     *     -> on cherche t_resp.Defaut='O' pour ce CodeSal ; si trouvé et autorisé, on prend
+     *     -> sinon, première agence autorisée par ordre alphabétique
+     * - Sinon :
+     *     -> si CodeAgSal ∈ agences autorisées, on prend CodeAgSal
+     *     -> sinon, première par ordre alphabétique
+     */
+    private function computeDefaultAgence(array $agencesAutorisees, ?string $codeAg, ?string $codeSal): ?string
+    {
+        // Normalisation
+        $agences = array_values(array_unique(array_filter($agencesAutorisees, fn($x)=>is_string($x) && $x!=='')));
+        if (empty($agences)) {
+            return null;
+        }
+
+        $isSuper = in_array($codeAg, ['ADMI','PLUS','DOAG'], true);
+
+        if ($isSuper && $codeSal) {
+            $pref = \Illuminate\Support\Facades\DB::table('t_resp')
+                ->where('CodeSal', $codeSal)
+                ->where('Defaut', 'O')
+                ->value('CodeAgSal');
+
+            if ($pref && in_array($pref, $agences, true)) {
+                return $pref;
+            }
+
+            // Pas de Defaut='O' valide → alpha
+            $sorted = $agences; sort($sorted, SORT_NATURAL | SORT_FLAG_CASE);
+            return $sorted[0] ?? null;
+        }
+
+        // Utilisateur "standard"
+        if ($codeAg && in_array($codeAg, $agences, true)) {
+            return $codeAg;
+        }
+
+        $sorted = $agences; sort($sorted, SORT_NATURAL | SORT_FLAG_CASE);
+        return $sorted[0] ?? null;
+    }
+
 }

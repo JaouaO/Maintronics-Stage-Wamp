@@ -1,33 +1,28 @@
 <?php
-
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateInterventionRequest extends FormRequest
 {
-    public function authorize()
-    {
-        return true; // tu as déjà le middleware de session
-    }
+    public function authorize() { return true; }
 
     public function rules()
     {
         return [
-            'commentaire'   => ['nullable','string','max:250'],
-            'contact_reel'  => ['nullable','string','max:250'],
+            'commentaire'   => ['nullable','string','max:250','not_regex:/[<>]/'],
+            'contact_reel'  => ['nullable','string','max:250','not_regex:/[<>]/'],
 
             'rea_sal'       => ['required','string','max:5','exists:t_salarie,CodeSal'],
-            'date_rdv'  => ['date_format:Y-m-d','required','after_or_equal:today'],
-            'heure_rdv' => ['date_format:H:i','required'],
+            'date_rdv'      => ['nullable','date_format:Y-m-d','after_or_equal:today'],
+            'heure_rdv'     => ['nullable','date_format:H:i'],
 
             'code_sal_auteur' => ['required','string','max:5'],
 
-            // adapte les tailles à ton schéma (5 pour CP FR, 80 pour ville/marque par ex.)
             'code_postal'   => ['nullable','string','max:10','regex:/^[0-9A-Za-z\- ]{4,10}$/'],
-            'ville'         => ['nullable','string','max:80'],
-            'marque'        => ['nullable','string','max:80'],
-            'objet_trait'   => ['nullable','string','max:120'],
+            'ville'         => ['nullable','string','max:80','not_regex:/[<>]/'],
+            'marque'        => ['nullable','string','max:80','not_regex:/[<>]/'],
+            'objet_trait'   => ['nullable','string','max:120','not_regex:/[<>]/'],
 
             'traitement'    => ['array'],
             'traitement.*'  => ['in:0,1'],
@@ -36,10 +31,31 @@ class UpdateInterventionRequest extends FormRequest
 
             'action_type'   => ['required','in:,appel,rdv_valide'],
 
-            'urgent' => ['sometimes','boolean'],
-            'not_regex:/[\'{}";<>]/', // interdit les ' et ;
+            'urgent'        => ['sometimes','boolean'],
         ];
     }
+
+    protected function prepareForValidation(): void
+    {
+        foreach (['commentaire','contact_reel','ville','marque','objet_trait'] as $f) {
+            if ($this->filled($f)) {
+                $this->merge([$f => trim(preg_replace('/[\x00-\x1F\x7F]/u','',$this->input($f)))]);
+            }
+        }
+    }
+
+    public function withValidator($validator)
+    {
+        $validator->after(function ($v) {
+            $d = $this->input('date_rdv');
+            $h = $this->input('heure_rdv');
+            if (($d && !$h) || (!$d && $h)) {
+                $v->errors()->add('date_rdv', 'Saisissez la date et l’heure ensemble, ou laissez les deux vides.');
+                $v->errors()->add('heure_rdv', 'Saisissez la date et l’heure ensemble, ou laissez les deux vides.');
+            }
+        });
+    }
+
 
     public function messages()
     {

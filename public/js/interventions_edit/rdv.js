@@ -1,5 +1,5 @@
 // public/js/interventions/rdv.js
-import { withBtnLock } from './utils.js';
+import { withBtnLock, isInAgendaList, getAgendaCodes } from './utils.js';
 
 export function initRDV() {
     const form       = document.getElementById('interventionForm');
@@ -13,6 +13,29 @@ export function initRDV() {
     const elTech = document.getElementById('selAny');
     const elDate = document.getElementById('dtPrev');
     const elTime = document.getElementById('tmPrev');
+
+    // ADD — désactive le confirm inline éventuel du <form onsubmit="..."> pour éviter la double pop-up
+    if (form && form.getAttribute('onsubmit')) {
+        try { form.removeAttribute('onsubmit'); } catch {}
+    }
+
+    // ADD — sait si un RDV validé existe déjà (depuis l’agenda, sans requête)
+    function hasExistingValidated(){
+        try {
+            if (typeof window.__agendaHasValidatedForThisDossier === 'function') {
+                return !!window.__agendaHasValidatedForThisDossier();
+            }
+            if (window.APP && typeof window.APP.hasValidatedForThisDossier === 'boolean') {
+                return !!window.APP.hasValidatedForThisDossier;
+            }
+        } catch(e) {}
+        return false;
+    }
+    // ADD — message d’avertissement “écrasera le RDV validé”
+    function overwriteWarnText(){
+        return "⚠️ Un RDV VALIDÉ existe déjà pour ce dossier.\n"
+            + "Le valider à nouveau va SUPPRIMER/ÉCRASER l’autre RDV validé.\n";
+    }
 
     // --- helpers modale locale (vous pouvez remplacer par import modal.js si dispo)
     const modal     = document.getElementById('infoModal');
@@ -65,12 +88,12 @@ export function initRDV() {
         if(!elDate) return;
         const now = nowFromServer();
         const today = fmtYMD(now);
-        elDate.min = today; // interdit les jours avant aujourd'hui
+        elDate.min = today;
         if(elTime){
             if(elDate.value === today){
-                elTime.min = fmtHM(now); // interdit les heures < maintenant (à la minute)
+                elTime.min = fmtHM(now);
             }else{
-                elTime.removeAttribute('min'); // dates futures: pas de min sur l'heure
+                elTime.removeAttribute('min');
             }
         }
     }
@@ -107,7 +130,7 @@ export function initRDV() {
                 const date = elDate?.value || '';
                 const time = elTime?.value || '';
                 if (!numInt || !tech || !date || !time) { alert('Sélectionne le technicien, la date et l’heure.'); return; }
-                if (guardPastOrAlert()) return; // empêche passé
+                if (guardPastOrAlert()) return;
 
                 const url = `/interventions/${encodeURIComponent(numInt)}/rdv/temporaire`;
                 const res = await fetch(url, {
@@ -140,6 +163,14 @@ export function initRDV() {
                     return;
                 }
 
+                const techNorm = (elTech?.value || '').toUpperCase().trim();
+                if (!isInAgendaList(techNorm)) {
+                    // rechargement complet pour reconstruire agendaPeople côté serveur
+                    window.location.reload(); // équivalent F5
+                    return;
+                }
+
+// sinon, refresh léger de l'agenda existant
                 document.getElementById('selModeTech')?.dispatchEvent(new Event('change'));
                 const c = document.querySelector('#commentaire'); if (c) c.value = '';
                 alert(out.mode === 'updated' ? 'RDV temporaire mis à jour.' : 'RDV temporaire créé.');
@@ -147,7 +178,7 @@ export function initRDV() {
         });
     }
 
-    // --- Valider RDV (avec choix si temporaires existants)
+    // --- Valider RDV (modal combinée : temporaires + avertissement d’écrasement si RDV validé existe)
     if (btnVal && form) {
         btnVal.addEventListener('click', (ev) => {
             withBtnLock(ev.currentTarget, async () => {
@@ -157,14 +188,20 @@ export function initRDV() {
                 const date  = elDate?.value || '';
                 const heure = elTime?.value || '';
 
-                // refuse validation si passe
                 if (date && heure && isPastSelection(date, heure)) {
                     alert('Impossible de valider un rendez-vous dans le passé.');
                     return;
                 }
 
-                // manques → submit classique (laissez la validation serveur faire le reste)
-                if (!numInt || !tech || !date || !heure) { form.requestSubmit(); return; }
+                if (!numInt || !tech || !date || !heure) {
+                    // confirmation simple si RDV validé déjà existant
+                    if (hasExistingValidated()) {
+                        const ok = confirm(overwriteWarnText() + "\nConfirmer la validation ?");
+                        if (!ok) return;
+                    }
+                    form.requestSubmit();
+                    return;
+                }
 
                 const urlCheck = `/interventions/${encodeURIComponent(numInt)}/rdv/temporaire/check`;
                 const urlPurge = `/interventions/${encodeURIComponent(numInt)}/rdv/temporaire/purge`;
@@ -185,8 +222,19 @@ export function initRDV() {
                     });
                     const j1 = await r1.json().catch(() => ({ ok:false, count:0, items:[] }));
                     const hasTemps = !!(j1 && j1.ok && (j1.count || 0) > 0);
-                    if (!hasTemps) { form.requestSubmit(); return; }
 
+                    // ADD — si pas de temporaires mais un validé existe déjà → confirm unique
+                    if (!hasTemps) {
+                        if (hasExistingValidated()) {
+                            const ok = confirm(overwriteWarnText() + "\nConfirmer la validation ?");
+                            if (!ok) return;
+                        }
+                        form.requestSubmit();
+                        return;
+                    }
+
+                    // Il y a des temporaires → modale combinée
+                    const hadValidated = hasExistingValidated(); // ADD
                     const listHtml = (j1.items || []).map(it => {
                         const hhmm = (it.StartTime || '').slice(0,5);
                         const dfr  = (it.StartDate || '').split('-').reverse().join('/');
@@ -195,15 +243,26 @@ export function initRDV() {
                         return `<li><code>${dfr} ${hhmm}</code> · <strong>${t}</strong> — ${lab}</li>`;
                     }).join('');
 
+                    // ADD — bloc d’avertissement “écrasement” fusionné dans la même modale
+                    const warnBlock = hadValidated
+                        ? `<p class="alert-warn" style="margin:8px 0;padding:8px;border:1px solid #e0a800;background:#fff3cd">
+                              ⚠️ Un RDV <strong>validé</strong> existe déjà pour ce dossier.<br>
+                              Valider maintenant va <strong>écraser</strong> l’existant.
+                           </p>`
+                        : '';
+
                     const html = `
                       <div>
-                        <h3 class="modal-title">RDV temporaires existants</h3>
+                        <h3 class="modal-title">Validation du rendez-vous</h3>
+                        ${warnBlock}
                         <p>Des rendez-vous <em>temporaires</em> sont présents sur ce dossier&nbsp;:</p>
                         <ul class="modal-list">${listHtml}</ul>
                         <p>Que souhaitez-vous faire&nbsp;?</p>
                         <div class="hstack-8 flex-wrap">
                           <button id="optPurgeThenValidate" class="btn" type="button">Supprimer les temporaires puis valider</button>
-                          <button id="optValidateAnyway" class="btn" type="button">Valider sans supprimer</button>
+                          <button id="optValidateAnyway" class="btn" type="button">
+                            ${hadValidated ? 'Valider (écrasera l’existant)' : 'Valider sans supprimer'}
+                          </button>
                           <button id="optCancel" class="btn" type="button">Annuler</button>
                         </div>
                       </div>`;
@@ -221,7 +280,7 @@ export function initRDV() {
                                 if (!j2.ok) { alert('❌ Échec de la suppression des RDV temporaires.'); return; }
                                 document.getElementById('selModeTech')?.dispatchEvent(new Event('change'));
                                 closeModal();
-                                form.requestSubmit();
+                                form.requestSubmit(); // pas de second confirm
                             } catch (err) {
                                 console.error('[purge temporaires] erreur', err);
                                 alert('❌ Erreur lors de la suppression des RDV temporaires.');
@@ -239,6 +298,11 @@ export function initRDV() {
 
                 } catch (err) {
                     console.error('[Valider RDV] erreur', err);
+                    // dernier recours : simple confirm si RDV validé existant
+                    if (hasExistingValidated()) {
+                        const ok = confirm(overwriteWarnText() + "\nConfirmer la validation ?");
+                        if (!ok) return;
+                    }
                     form.requestSubmit();
                 }
             });

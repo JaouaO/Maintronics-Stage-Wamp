@@ -56,3 +56,15 @@ export function startOfDay(d) {
 export function isBeforeToday(d) {
     return startOfDay(d) < startOfDay(nowServer());
 }
+export function getAgendaCodes() {
+    // récupère tous les codes du sélecteur agenda (hors _ALL), normalisés
+    const opts = document.querySelectorAll('#selModeTech option');
+    return Array.from(opts)
+        .map(o => (o.value || '').toUpperCase().trim())
+        .filter(v => v && v !== '_ALL');
+}
+export function isInAgendaList(code) {
+    const c = (code || '').toUpperCase().trim();
+    if (!c) return false;
+    try { return getAgendaCodes().includes(c); } catch { return false; }
+}

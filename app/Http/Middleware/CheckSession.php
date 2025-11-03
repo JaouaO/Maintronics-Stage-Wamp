@@ -28,18 +28,24 @@ class CheckSession
         if ($idFromUrl && !preg_match('/^[A-Za-z0-9_-]+$/', $idFromUrl)) {
             abort(400, 'ID invalide (caractères non autorisés).');
         }
-        $sessionId = session('id');
+        $sessionId = (string)session('id');
 
+        // Ne fait l’affichage de ?id=... que pour les requêtes HTML (pas JSON/AJAX)
+        $isHtmlGet = $request->isMethod('GET') && !$request->expectsJson() && !$request->ajax();
 
-
-        if ($request->isMethod('GET') && $idFromUrl && $idFromUrl !== $sessionId) {
-            $flashSuccess = session('success'); // récupère le flash actuel
-            $params = array_merge($request->route()->parameters(), ['id' => $sessionId]);
-
-            return redirect()->route($request->route()->getName(), $params)
-                ->with('success', $flashSuccess);
+        // (B1) GET + id manquant → on ajoute ?id=<session>
+        if ($isHtmlGet && !$idFromUrl) {
+            $url = $request->fullUrlWithQuery(['id' => $sessionId]);
+            return redirect()->to($url);
         }
 
+        // (B2) GET + id présent mais différent → on remplace par l’id de session
+        if ($isHtmlGet && $idFromUrl && $idFromUrl !== $sessionId) {
+            $url = $request->fullUrlWithQuery(['id' => $sessionId]);
+            return redirect()->to($url);
+        }
+
+        // (C) POST + id fourni mais ≠ session → rejet
         if ($request->isMethod('POST')) {
             $postedId = $request->input('id');
             if ($postedId && $postedId !== $sessionId) {
@@ -47,29 +53,25 @@ class CheckSession
             }
         }
 
-
+        // --- Autorisations horaires & agence ---
         $ip = $request->ip();
-
-        $response = app(CheckAutorisationsService::class)
-            ->checkAutorisations($sessionId, $ip);
-
+        $response = app(\App\Services\CheckAutorisationsService::class)->checkAutorisations($sessionId, $ip);
         if (!$response['success']) {
             abort(403, 'Accès non autorisé');
         }
-
-
         $data = $response['data'];
 
-        // Partager la ligne DB complète avec Blade
         view()->share('data', $data);
         view()->share('agences_autorisees', $data->agences_autorisees ?? []);
+        view()->share('defaultAgence', $data->defaultAgence ?? null);
 
-        // Sauvegarder le CodeSal dans la session
-        session(['codeSal' => $data->Code_Sal]);
-
+        session([
+            'agences_autorisees' => (array)($data->agences_autorisees ?? []),
+            'codeAg' => (string)($data->CodeAgSal ?? ''),
+            'codeSal' => (string)($data->CodeSal ?? ($data->Util ?? '')),
+            'defaultAgence' => (string)($data->defaultAgence ?? ''),
+        ]);
 
         return $next($request);
-
     }
-
 }

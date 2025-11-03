@@ -74,6 +74,52 @@ input,select,textarea{width:100%;padding:6px 7px;border:1px solid var(--line);bo
 .right #tmPrev{max-width:160px}
 .affectationSticky thead{display:none}
 
+/* 1) Reset natif pour voir les cases (annule la règle globale sur input) */
+input[type="checkbox"],
+input[type="radio"]{
+    appearance:auto;            /* redevient natif */
+    -webkit-appearance:auto;
+    width:auto; height:auto;    /* pas 100% */
+    padding:2px 6px;
+    border:initial;
+    background:initial;
+    border-radius:6px;
+}
+
+/* 1) Reset natif — sans padding (évite d'élargir la case) */
+input[type="checkbox"],
+input[type="radio"]{
+    appearance:auto; -webkit-appearance:auto;
+    width:auto; height:auto;
+    padding:0;                /* ← au lieu de 2px 6px */
+    border:initial; background:initial;
+    border-radius:initial;
+}
+
+/* 2) Urgent : réserver l’espace dès l’état normal */
+.hstack-12{ display:flex; align-items:center; gap:12px; }
+.hstack-12 select{ flex:1 1 auto; min-width:0; }
+
+.hstack-12 .urgent-toggle{
+    margin-left:auto;
+    display:inline-flex; align-items:center; gap:8px; white-space:nowrap; cursor:pointer;
+    padding:2px 6px;                 /* ← même padding tout le temps */
+    border:1px solid transparent;    /* ← bordure “fantôme” pour éviter le shift */
+    border-radius:6px;               /* ← même rayon tout le temps */
+    line-height:1.2;
+}
+
+/* 3) Styles lisibles */
+.urgent-toggle span{ color:var(--urgent-brd); font-weight:700; }
+.urgent-toggle input[type="checkbox"]{ accent-color:var(--urgent-brd); }
+
+
+/* 4) État coché : on ne change QUE les couleurs */
+.urgent-toggle:has(input:checked){
+    background:var(--urgent-bg);
+    border-color:var(--urgent-brd);  /* ← pas de changement de padding/radius */
+}
+
 /* Ligne Date/Heure large */
 .right .gridRow--dt{grid-template-columns:110px minmax(0,280px) 80px minmax(0,220px);max-width:720px;margin:6px auto;align-items:center}
 .right #dtPrev,.right #tmPrev{max-width:none;width:100%}
@@ -112,6 +158,8 @@ input,select,textarea{width:100%;padding:6px 7px;border:1px solid var(--line);bo
 }
 .cal-cell .d{font-variant-numeric:tabular-nums}
 .cal-cell.muted{opacity:.45}
+.cal-cell.muted2{opacity:.75}
+
 .cal-cell:hover{outline:2px solid #cfe0ff}
 
 /* Heatmap (0..10) */
@@ -135,7 +183,8 @@ input,select,textarea{width:100%;padding:6px 7px;border:1px solid var(--line);bo
 }
 
 /* Jour courant */
-.cal-cell[aria-current="date"]{outline:2px solid #7aa7ff}
+/*.cal-cell[aria-current="date"]{outline:2px solid #7aa7ff}*/
+
 
 /* ---------- Pastilles (DYNAMIC DOTS) ---------- */
 /* Container flex en bas à gauche */

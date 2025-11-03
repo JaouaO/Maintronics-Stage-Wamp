@@ -1,0 +1,99 @@
+/* =========================================================
+   NOUVELLE INTERVENTION — FORM UI (scopé par .new-interv)
+   ========================================================= */
+:root{
+    --panel:#fff; --line:#d9deea; --ink:#1f2430; --mut:#657089;
+    --urgent-bg:#ffe9e9; --urgent-brd:#d93025; --urgent-fg:#a31212;
+    --acc-green-bg:#e9f8ef; --acc-green-brd:#0d6b2d; --acc-green-fg:#0d6b2d; --acc-green-hov:#ffffff;
+}
+
+
+/* Card */
+.new-interv .card{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.new-interv .cardBody{padding:12px}
+
+/* Grilles */
+.new-interv .grid-agence-num{display:grid;grid-template-columns:260px 1fr;gap:12px;align-items:end}
+.new-interv .grid-infos{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.new-interv .grid-rdv{display:grid;grid-template-columns:180px 140px 1fr;gap:12px;align-items:end}
+@media (max-width:900px){
+    .new-interv .grid-agence-num,
+    .new-interv .grid-infos,
+    .new-interv .grid-rdv{grid-template-columns:1fr}
+}
+
+/* Champs */
+.new-interv .b-field{display:flex;flex-direction:column;gap:6px}
+.new-interv .b-field label{font-size:12px;color:var(--mut)}
+.new-interv .b-field input,
+.new-interv .b-field select{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);
+    font:13.5px/1.3 Inter,system-ui
+}
+.new-interv .b-field input:focus,
+.new-interv .b-field select:focus{outline:none;border-color:#cfe0ff;box-shadow:0 0 0 3px #e9f2ff}
+
+/* NumInt readonly */
+.new-interv input[readonly]{background:#f9fafb;border-style:dashed;color:#2a3142}
+
+/* Aides / erreurs */
+.new-interv .hint{color:#8b93a7;font-size:12px}
+.new-interv .err{margin-top:4px;color:#7a1d27;background:var(--tag-coral);border:1px solid #ffc2c8;border-radius:8px;padding:6px 8px;font-size:12.5px}
+
+/* Options (Urgent) */
+.new-interv .options-row{display:flex;gap:16px;align-items:center;margin-top:6px}
+.new-interv .options-row input[type="checkbox"]{transform:translateY(1px)}
+
+/* ===== URGENT — même rendu que la page d’édition ===== */
+#CreateIntervPage .urgent-toggle{
+    margin-left:auto;
+    display:inline-flex;align-items:center;gap:8px;white-space:nowrap;cursor:pointer;
+    padding:2px 6px;border:1px solid transparent;border-radius:6px;line-height:1.2
+}
+#CreateIntervPage .urgent-toggle span{color:var(--urgent-brd);font-weight:700}
+#CreateIntervPage .urgent-toggle input[type="checkbox"]{accent-color:var(--urgent-brd)}
+#CreateIntervPage .urgent-toggle:has(input:checked){
+    background:var(--urgent-bg);border-color:var(--urgent-brd)
+}
+
+/* Footer (CTA) */
+.new-interv .footer{display:flex;justify-content:flex-end;margin-top:12px}
+.new-interv .ft-actions{display:flex;gap:8px}
+
+/* ===== BOUTONS ===== */
+/* Principal = même look que “Valider le prochain rendez-vous” */
+#CreateIntervPage .btn-primary{
+    border:1px solid var(--acc-green-brd);
+    background:var(--acc-green-bg);
+    color:var(--acc-green-fg);
+    padding:6px 10px;border-radius:8px;font-size:12.5px;cursor:pointer;font-weight:600;
+    transition:background-color .15s ease,border-color .15s ease,transform .02s ease
+}
+#CreateIntervPage .btn-primary:hover{background:var(--acc-green-hov);border-color:#0a4c2d;color:#0a4c2d}
+#CreateIntervPage .btn-primary:active{transform:translateY(1px)}
+
+/* Secondaire (Annuler) — non souligné, cohérent */
+.new-interv .btn-light{
+    border:1px solid var(--line);background:#fff;color:var(--ink);
+    padding:6px 10px;border-radius:8px;font-size:12.5px;cursor:pointer;
+    text-decoration:none;display:inline-flex;align-items:center
+}
+.new-interv .btn-light:hover{background:#f7faff;text-decoration:none}
+.new-interv .btn-light:focus-visible{outline:2px solid #cfe0ff;outline-offset:2px}
+
+/* Badge “auto” */
+.new-interv .badge-auto{
+    display:inline-block;margin-left:6px;padding:2px 6px;border-radius:999px;
+    font-size:11px;line-height:1.1;background:#f3f4f6;color:#374151;border:1px solid #e5e7eb
+}
+
+/* Utilitaire */
+.new-interv .mt-8{margin-top:8px}
+
+
+#NumInt[data-loading]{ background-image: linear-gradient(90deg, transparent, rgba(0,0,0,.07), transparent); background-size: 200% 100%; animation: sh 1s linear infinite }
+@keyframes sh { to { background-position: -200% 0 } }
+
+
+
+
