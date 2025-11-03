@@ -1,4 +1,3 @@
-
 @if ($paginator->hasPages())
     <nav role="navigation" aria-label="Pagination Navigation" class="pagination-nav">
         <ul class="pagination-list">
@@ -6,7 +5,12 @@
             @if ($paginator->onFirstPage())
                 <li class="disabled"><span>&laquo;</span></li>
             @else
-                <li><a href="{{ $paginator->previousPageUrl() }}{{ request()->has('per_page') ? '&per_page='.request('per_page') : '' }}" rel="prev">&laquo;</a></li>
+                <li>
+                    <a href="{{ $paginator->previousPageUrl() }}
+                             {{ request()->has('per_page') ? '&per_page='.request('per_page') : '' }}
+                             {{ request()->has('ag') ? '&ag='.urlencode(request('ag')) : '' }}"
+                       rel="prev">&laquo;</a>
+                </li>
             @endif
 
             {{-- Pagination Elements --}}
@@ -21,7 +25,10 @@
                     @foreach ($element as $page => $url)
                         @php
                             if (request()->has('per_page')) {
-                              $url = $url . '&per_page=' . request('per_page');
+                                $url = $url . '&per_page=' . request('per_page');
+                            }
+                            if (request()->has('ag')) {
+                                $url = $url . '&ag=' . urlencode(request('ag'));
                             }
                         @endphp
                         @if ($page == $paginator->currentPage())
@@ -35,7 +42,12 @@
 
             {{-- Next Page Link --}}
             @if ($paginator->hasMorePages())
-                <li><a href="{{ $paginator->nextPageUrl() }}{{ request()->has('per_page') ? '&per_page='.request('per_page') : '' }}" rel="next">&raquo;</a></li>
+                <li>
+                    <a href="{{ $paginator->nextPageUrl() }}
+                             {{ request()->has('per_page') ? '&per_page='.request('per_page') : '' }}
+                             {{ request()->has('ag') ? '&ag='.urlencode(request('ag')) : '' }}"
+                       rel="next">&raquo;</a>
+                </li>
             @else
                 <li class="disabled"><span>&raquo;</span></li>
             @endif

@@ -16,23 +16,43 @@
             </a>
         </div>
 
-
         @if ($errors->any())
             <div class="alert alert-danger" role="alert">
                 <ul style="margin:0;padding-left:18px">
                     @foreach ($errors->all() as $error)
-                        <li>{{ $error }}</li> {{-- échappé par Blade --}}
+                        <li>{{ $error }}</li>
                     @endforeach
                 </ul>
             </div>
         @endif
 
-
         <div class="b-subbar">
-            {{-- FORMULAIRE UNIQUE : recherche + filtres + per-page --}}
+            {{-- FORMULAIRE UNIQUE : agence + recherche + filtres + per-page --}}
             <form id="filterForm" method="get" action="{{ route('interventions.show') }}" class="b-row">
                 {{-- Scope piloté par les chips --}}
                 <input type="hidden" name="scope" id="scope" value="{{ $scope ?? '' }}">
+
+                {{-- === AGENCE === --}}
+                @php
+                    $ags = array_values((array)($agencesAutorisees ?? []));
+                    $hasMany = count($ags) > 1;
+                    $agSelected = $ag ?? null; // null => toutes (si $hasMany)
+                @endphp
+                <div class="b-agence">
+                    <label for="ag">Agence</label>
+                    <select id="ag" name="ag" {{ (!$hasMany && !empty($ags)) ? 'disabled' : '' }}>
+                        @if($hasMany)
+                            <option value="_ALL" {{ $agSelected === null ? 'selected' : '' }}>Toutes les agences</option>
+                        @endif
+                        @foreach($ags as $agc)
+                            <option value="{{ $agc }}" {{ $agSelected === $agc ? 'selected' : '' }}>{{ $agc }}</option>
+                        @endforeach
+                    </select>
+                    @if(!$hasMany && !empty($ags))
+                        {{-- Les champs disabled ne soumettent pas : on duplique la valeur en hidden --}}
+                        <input type="hidden" name="ag" value="{{ $ags[0] }}">
+                    @endif
+                </div>
 
                 {{-- Recherche --}}
                 <div class="b-search">
@@ -50,7 +70,6 @@
                     <p class="form-error">{{ $message }}</p>
                     @enderror
                 </div>
-
 
                 {{-- Filtres (chips cliquables) --}}
                 @php $scope = $scope ?? ''; @endphp
@@ -207,7 +226,12 @@
                 </div>
 
                 <div id="pager" class="pager">
-                    {{ $rows->onEachSide(1)->appends(['per_page'=>$perPage, 'q'=>$q, 'scope'=>$scope])->links('pagination.clean') }}
+                    {{ $rows->onEachSide(1)->appends([
+                        'per_page' => $perPage,
+                        'q'        => $q,
+                        'scope'    => $scope,
+                        'ag'       => $ag ?? ($hasMany ? '_ALL' : ($ags[0] ?? null)),
+                    ])->links('pagination.clean') }}
                 </div>
             </div>
         </div>
@@ -217,7 +241,12 @@
             <div class="ft-actions">
                 <a class="btn" href="{{ route('interventions.create') }}">➕ Nouvelle intervention</a>
                 <a class="btn" href="{{ url()->previous() }}">Retour</a>
-                <a class="btn" href="{{ route('interventions.show', ['per_page'=>$perPage, 'q'=>$q, 'scope'=>$scope]) }}">Actualiser</a>
+                <a class="btn" href="{{ route('interventions.show', [
+                        'per_page' => $perPage,
+                        'q'        => $q,
+                        'scope'    => $scope,
+                        'ag'       => $ag ?? ($hasMany ? '_ALL' : ($ags[0] ?? null)),
+                    ]) }}">Actualiser</a>
             </div>
         </div>
     </div>

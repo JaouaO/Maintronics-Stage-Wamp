@@ -71,6 +71,8 @@ class MainController extends Controller
         $codeSal = $request->input('codeSal');
         $login = $this->authService->login($codeSal);
 
+
+
         if (!$login['success']) {
             return redirect()->route('erreur')->with('message', $login['message']);
         }
@@ -96,19 +98,49 @@ class MainController extends Controller
 
     public function showInterventions(ShowInterventionsRequest $request)
     {
-        $v = $request->validated();
+        $v       = $request->validated();
         $perPage = (int)($v['per_page'] ?? 10);
         $q       = $v['q'] ?? null;
         $scope   = $v['scope'] ?? null;
 
-        $agencesAutorisees = (array) session('agences_autorisees', []);
+        $agencesAutorisees = array_values((array) session('agences_autorisees', []));
         $codeSal           = (string) session('codeSal', '');
+        $defaultAgence     = (string) session('defaultAgence', ''); // rempli au login si dispo
+
+        // Sélection courante (query ?ag=...)
+        $agParam = (string) $request->query('ag', '');
+        $hasMany = count($agencesAutorisees) > 1;
+
+        // Résolution de l’agence active
+        $selectedAg = null;
+        if ($agParam && in_array($agParam, $agencesAutorisees, true)) {
+            $selectedAg = $agParam;
+        } elseif ($agParam === '_ALL' && $hasMany) {
+            $selectedAg = null; // toutes
+        } else {
+            if ($defaultAgence && in_array($defaultAgence, $agencesAutorisees, true)) {
+                $selectedAg = $defaultAgence;
+            } elseif (!$hasMany && !empty($agencesAutorisees)) {
+                $selectedAg = $agencesAutorisees[0];
+            } else {
+                $selectedAg = null; // fallback = toutes si plusieurs
+            }
+        }
 
         $rows = $this->interventionService
-            ->listPaginatedSimple($perPage, $agencesAutorisees, $codeSal, $q, $scope);
+            ->listPaginatedSimple($perPage, $agencesAutorisees, $codeSal, $q, $scope, $selectedAg);
 
-        return view('interventions.show', compact('rows','perPage','q','scope'));
+        return view('interventions.show', [
+            'rows'                => $rows,
+            'perPage'             => $perPage,
+            'q'                   => $q,
+            'scope'               => $scope,
+            'agencesAutorisees'   => $agencesAutorisees,
+            'ag'                  => $selectedAg,   // agence active (null => toutes)
+            'defaultAgence'       => $defaultAgence,
+        ]);
     }
+
 
 
     // GET /interventions/{numInt}/history
