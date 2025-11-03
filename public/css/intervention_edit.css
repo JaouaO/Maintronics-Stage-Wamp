@@ -1,0 +1,305 @@
+/* =========================================================
+   INTERVENTION EDIT — CSS NETTOYÉ & HOMOGÉNÉISÉ
+   ========================================================= */
+/* ---------- Variables ---------- */
+:root{
+    --gap:12px; --r:8px;
+    /* Base */
+    --bg:#f4f5f7; --panel:#fff; --ink:#222; --mut:#666; --line:#d6d9df; --head:#e9f2ff;
+    /* Accents */
+    --acc-green-bg:#e9f8ef; --acc-green-brd:#0d6b2d; --acc-green-fg:#0d6b2d; --acc-green-hov:#ffffff;
+    --acc-amber-bg:#fff5dc; --acc-amber-brd:#e6b34e; --acc-amber-fg:#7a5400; --acc-amber-hov:#ffecc2;
+    --acc-blue-bg:#e9f2ff;  --acc-blue-brd:#7aa7ff; --acc-blue-fg:#214c9c; --acc-blue-hov:#dbe9ff;
+    /* Urgent */
+    --urgent-bg:#ffe9e9; --urgent-brd:#d93025; --urgent-fg:#a31212; --urgent-hov:#fff3f3;
+    /* Boutons */
+    --btn-primary-bg:#0d6efd;
+    --btn-danger-bg:#dc3545;
+}
+
+/* ---------- Reset/Typo ---------- */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,Segoe UI,Arial}
+
+/* =========================================================
+   Layout & Cards
+   ========================================================= */
+.app{
+    width:100%;max-width:1320px;margin:0 auto;padding:12px;
+    display:grid;gap:var(--gap);
+    grid-template-columns:minmax(360px,42%) minmax(360px,58%);
+    min-height:100dvh;align-items:stretch;
+}
+.col{min-height:0;display:flex;flex-direction:column;gap:var(--gap)}
+
+.box{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    display:flex;flex-direction:column;min-height:0;
+}
+.box .head{
+    display:flex;justify-content:space-between;align-items:center;gap:8px;
+    padding:6px 8px;background:var(--head);border-bottom:1px solid var(--line);
+    border-top-left-radius:var(--r);border-top-right-radius:var(--r);
+}
+.box .body{padding:8px;display:flex;flex-direction:column;gap:8px;min-height:0}
+
+/* =========================================================
+   Table / Formulaires
+   ========================================================= */
+.table{margin:0}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:#f7faff;position:sticky;top:0;z-index:1}
+td.status{text-align:center;width:66px}
+.status input{transform:scale(1.05)}
+.note{color:var(--mut);font-size:12px}
+
+.grid2,.gridObj{display:grid;grid-template-columns:120px 1fr;gap:6px;align-items:center}
+.gridRow{display:grid;grid-template-columns:120px 1fr 110px 1fr;gap:6px;align-items:center}
+input,select,textarea{width:100%;padding:6px 7px;border:1px solid var(--line);border-radius:6px;background:#fff;line-height:1.2}
+.ro{padding:6px 7px;border:1px dashed var(--line);border-radius:6px;background:#f9fafb;user-select:text;cursor:default;white-space:normal;overflow:hidden}
+
+/* Affectation sticky */
+.right .affectationSticky{
+    position:sticky;top:12px;z-index:3;background:var(--panel);
+    padding-bottom:6px;border-bottom:1px solid var(--line);
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+}
+.right .affectationSticky .grid2,.right .affectationSticky .gridRow{margin:4px auto;max-width:560px}
+.right .affectationSticky .grid2{grid-template-columns:120px minmax(0,360px)}
+.right .affectationSticky .gridRow{grid-template-columns:120px minmax(0,200px) 110px minmax(0,160px)}
+.right #selAny{max-width:360px}
+.right #dtPrev{max-width:200px}
+.right #tmPrev{max-width:160px}
+.affectationSticky thead{display:none}
+
+/* Ligne Date/Heure large */
+.right .gridRow--dt{grid-template-columns:110px minmax(0,280px) 80px minmax(0,220px);max-width:720px;margin:6px auto;align-items:center}
+.right #dtPrev,.right #tmPrev{max-width:none;width:100%}
+
+/* =========================================================
+   Agenda (mois + liste jour)
+   ========================================================= */
+.agendaBox{display:flex;flex-direction:column;overflow:auto;max-height:60vh}
+.agendaBox .head{position:sticky;top:0;z-index:2;background:var(--head);padding:6px 8px}
+.agendaBox .body{padding:8px;gap:8px}
+.agendaBox .grid2{grid-template-columns:96px 1fr;gap:6px}
+
+.cal-grid{
+    display:grid;grid-template-columns:repeat(7,1fr);gap:4px;
+    position:relative;min-height:240px;
+}
+/* Overlay de chargement */
+.cal-grid.is-loading::after{
+    content:""; position:absolute; inset:0;
+    background:rgba(255,255,255,.65); pointer-events:none;
+}
+.cal-grid.is-loading::before{
+    content:""; position:absolute; top:50%; left:50%;
+    width:22px; height:22px; margin:-11px 0 0 -11px;
+    border:3px solid #cbd5e1; border-top-color:#214c9c;
+    border-radius:50%; animation: calspin .8s linear infinite; z-index: 999;
+}
+@keyframes calspin { to { transform: rotate(360deg); } }
+
+.cal-weekday{text-align:center;font-size:11px;color:var(--mut)}
+.cal-cell{
+    border:1px solid var(--line);border-radius:6px;background:#fff;
+    min-height:34px;padding:4px;font-size:11px;
+    display:flex;align-items:flex-start;justify-content:flex-end;
+    position:relative;cursor:pointer;user-select:none;
+}
+.cal-cell .d{font-variant-numeric:tabular-nums}
+.cal-cell.muted{opacity:.45}
+.cal-cell:hover{outline:2px solid #cfe0ff}
+
+/* Heatmap (0..10) */
+.cal-cell.heat-0  {background:hsl(120 60% 94%)}
+.cal-cell.heat-1  {background:hsl(115 80% 91%)}
+.cal-cell.heat-2  {background:hsl(110 80% 89%)}
+.cal-cell.heat-3  {background:hsl(100 80% 86%)}
+.cal-cell.heat-4  {background:hsl(90 80% 84%)}
+.cal-cell.heat-5  {background:hsl(75 80% 80%)}
+.cal-cell.heat-6  {background:hsl(60 80% 76%)}
+.cal-cell.heat-7  {background:hsl(45 80% 72%)}
+.cal-cell.heat-8  {background:hsl(30 80% 68%)}
+.cal-cell.heat-9  {background:hsl(15 80% 65%)}
+.cal-cell.heat-10 {background:hsl(0 80% 60%)}
+
+/* Urgent (liseré + coin) */
+.cal-cell.has-urgent{box-shadow:inset 0 0 0 2px var(--urgent-brd)}
+.cal-cell.has-urgent::after{
+    content:"";position:absolute;top:0;right:0;
+    border-left:10px solid transparent;border-bottom:10px solid transparent;border-top:10px solid var(--urgent-brd);
+}
+
+/* Jour courant */
+.cal-cell[aria-current="date"]{outline:2px solid #7aa7ff}
+
+/* ---------- Pastilles (DYNAMIC DOTS) ---------- */
+/* Container flex en bas à gauche */
+.cal-cell .dots{
+    position:absolute; left:6px; bottom:6px;
+    display:inline-flex; align-items:center; gap:4px;
+}
+/* Neutralise anciens positionnements absolus s’il y en a encore */
+.cal-cell .dots .dot,
+.cal-cell .dots .dot-base{
+    position:static !important; left:auto !important; right:auto !important; bottom:auto !important; margin:0 !important;
+    width:8px; height:8px; border-radius:999px;
+    border:1px solid rgba(0,0,0,.08);
+    box-shadow:0 0 0 1.5px #fff; /* halo blanc pour contraster sur la heatmap */
+    mix-blend-mode:normal;
+}
+/* Dot base (blanc) quand aucun signal */
+.cal-cell .dots .dot-base{ background:#fff !important; }
+
+/* Signaux (couleurs FORCÉES) */
+.cal-cell .dots .dot.red   { background-color:var(--urgent-brd, #d93025) !important; }
+.cal-cell .dots .dot.blue  { background-color:var(--btn-primary-bg, #0d6efd) !important; }
+.cal-cell .dots .dot.green { background-color:var(--acc-green-brd, #0d6b2d) !important; width:10px; height:10px; }
+
+/* Neutralise les vieux backgrounds génériques */
+.cal-cell .dot{ background:transparent !important; }
+.cal-cell.has-urgent .dot{ background:transparent !important; } /* le rouge vient de .dot.red */
+
+/* =========================================================
+   Liste du jour
+   ========================================================= */
+#calWrap.collapsed #calGrid{display:none}
+#calHead{display:flex;align-items:center;gap:8px;justify-content:space-between}
+#calHeadMid{display:flex;align-items:center;gap:8px}
+#calTitle{font-weight:600}
+#calPrev,#calNext,#calToggle{padding:4px 8px}
+#calListHead{display:flex;align-items:center;justify-content:space-between;margin:6px 0}
+#dayNext{padding:2px 8px}
+#calListTitle{margin:4px 0;font-size:12.5px}
+#calList .table thead th,#calList .table td{padding:6px}
+
+/* Lignes d’état */
+.cal-list tr.urgent{background:var(--urgent-bg)}
+.cal-list tr.urgent td{border-color:#f8c0be}
+
+.cal-list tr.temporaire{background:#fff7e6}
+.cal-list tr.temporaire td{border-color:#ffe2ba}
+
+/* Temporaire du dossier courant : bleu pâle */
+tr.temporaire.same-dossier { background: rgba(13,110,253,.08); }
+tr.temporaire.same-dossier:hover { background: rgba(13,110,253,.14); }
+
+/* Validé du dossier courant : vert pâle (reste vert même si urgent) */
+.cal-list tr.valide{ background: var(--acc-green-bg, #e9f8ef); }
+.cal-list tr.valide td{ border-color:#cfe8da; }
+.cal-list tr.valide.urgent{ background: var(--acc-green-bg, #e9f8ef); }
+.cal-list tr.valide.urgent td{ border-color:#cfe8da; }
+
+/* =========================================================
+   Boutons
+   ========================================================= */
+.btn{
+    border:1px solid var(--line);background:#eef3ff;
+    padding:5px 10px;border-radius:6px;cursor:pointer;line-height:1.1;font-size:13px;
+    transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease,transform .02s ease;
+}
+.btn:hover{background:#dde9ff;border-color:#b9c8e6}
+.btn:active{transform:translateY(1px)}
+.btn:focus-visible{outline:2px solid #cfe0ff;outline-offset:2px;box-shadow:0 0 0 3px rgba(131,170,255,.35)}
+.btn-sm{font-size:12px;padding:4px 9px;line-height:1.1}
+.btn-block{display:block;width:100%}
+
+.btn-history{background:#f2f7ff;border-color:#a7bce8;color:#214c9c;font-weight:600;margin:6px 0 8px}
+.btn-history:hover{background:#e6f0ff;border-color:#92ace4}
+.btn-plan-rdv{background:var(--acc-amber-bg);border-color:var(--acc-amber-brd);color:var(--acc-amber-fg)}
+.btn-plan-rdv:hover{background:var(--acc-amber-hov);border-color:#d6a139;color:#5e4300}
+.btn-plan-call{background:var(--acc-blue-bg);border-color:var(--acc-blue-brd);color:var(--acc-blue-fg)}
+.btn-plan-call:hover{background:var(--acc-blue-hov);border-color:#5f97ff;color:#163c84}
+
+/* Bouton “Valider” (vert) — le même partout (modale incluse) */
+.btn.btn-validate{
+    background:var(--acc-green-bg);
+    color:var(--acc-green-fg);
+    border:1px solid var(--acc-green-brd);
+    font-weight:600;
+}
+.btn.btn-validate:hover{
+    background:var(--acc-green-hov);
+    border-color:#0a4c2d;
+    color:#0a4c2d;
+}
+
+/* Danger */
+.btn.btn-danger{ background:var(--btn-danger-bg); color:#fff; border:none; }
+.btn.btn-danger:hover{ filter:brightness(0.95) }
+
+/* =========================================================
+   Modale
+   ========================================================= */
+#infoModal{display:none;position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.45)}
+#infoModal.is-open{display:grid;place-items:center}
+#infoModal .modal-content{
+    position:relative;background:#fff;width:min(640px,92vw);max-height:84vh;overflow:auto;
+    border-radius:8px;padding:16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.25);
+}
+#infoModal .close{
+    position:absolute;top:8px;right:10px;border:0;background:transparent;
+    font-size:22px;line-height:1;color:#666;cursor:pointer;
+}
+#infoModal .close:hover{color:#000}
+.modal-title{margin:0 0 10px 0;font-size:16px}
+
+.modal .btn{
+    font-size:inherit; font-family:inherit; line-height:1.2;
+    padding:.5rem .75rem; border-radius:.5rem;
+    cursor:pointer; display:inline-flex; align-items:center; justify-content:center;
+}
+.modal .modal-actions{display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap}
+
+/* =========================================================
+   Icônes, Badges, Chips, Utilitaires
+   ========================================================= */
+.col-icon{width:28px;text-align:center;border-left:1px solid var(--line)}
+.icon-btn{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:18px;height:18px;border:1px solid var(--line);border-radius:50%;
+    background:#fff;font-size:11px;line-height:1;color:#555;cursor:pointer;
+}
+.icon-btn:focus{outline:2px solid #cfe0ff;outline-offset:1px}
+
+.badge{display:inline-block;padding:2px 6px;border-radius:999px;font-size:11px;line-height:1.2;border:1px solid var(--line)}
+.badge-temp{background:#fff5dc;border-color:#e6b34e;color:#7a5400;font-weight:400} /* non gras */
+.badge-valid{background:#e9f8ef;border-color:#0d6b2d;color:#0d6b2d}
+.badge-call{background:#e9f2ff;border-color:#7aa7ff;color:#214c9c}
+.badge-urgent{background:var(--urgent-bg);border-color:var(--urgent-brd);color:var(--urgent-fg);font-weight:700;letter-spacing:.2px}
+.badge-obj{display:inline-block;padding:2px 6px;border-radius:999px;font-size:11px;line-height:1.2;border:1px solid var(--line);background:#eef3ff;color:#214c9c;border-color:#a7bce8;text-transform:none}
+
+.chips-wrap{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;line-height:1.1;border:1px solid var(--line);white-space:nowrap}
+.chip-green{background:#e9f8ef;border-color:#0d6b2d;color:#0d6b2d}
+.chip-amber{background:#fff5dc;border-color:#e6b34e;color:#7a5400}
+
+/* Alertes erreurs / invalides */
+.is-invalid{ border-color:#d93025 !important; box-shadow:0 0 0 2px rgba(217,48,37,.12); }
+.is-invalid:focus-visible{ outline:2px solid #f1b0ae; outline-offset:2px; box-shadow:0 0 0 3px rgba(217,48,37,.22); }
+.is-invalid-block{ border:1px solid #d93025 !important; border-radius:6px; box-shadow:inset 0 0 0 2px rgba(217,48,37,.08); }
+.label-invalid{ color:#a31212; font-weight:600; }
+
+/* Historique */
+.row-main{border-bottom:1px solid #f0f0f0}
+.row-details{display:none}
+.row-details.is-open{display:table-row}
+.hist-details-cell{padding:10px 12px;background:#fafafa;border-bottom:1px solid #eee}
+.sep{border:none;border-top:1px solid #e5e7eb;margin:10px 0}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.hist-title{margin:6px 0 12px 0}
+
+/* Commentaire compact */
+.center .box:first-of-type,.center .mserv{flex:0 0 auto}
+.center .mserv .body input#commentaire{height:34px}
+
+/* =========================================================
+   Responsive
+   ========================================================= */
+@media (max-width:767px){
+    .app{grid-template-columns:1fr}
+}
