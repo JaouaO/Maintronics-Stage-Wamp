@@ -252,3 +252,18 @@ td.col-flags .flags{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
     .b-agence select{padding:6px 28px 6px 10px; font-size:12px}
     .b-search input{padding:6px 28px 6px 10px; font-size:12px}
 }
+
+
+/* === RDV validé : teinte et badge === */
+.tint-rdv{
+    /* Vert gris très léger, cohérent avec les teintes existantes */
+    background: rgba(188, 239, 209, 0.16); /* proche de --tag-green, atténué */
+}
+.row-rdv{ box-shadow: inset 2px 0 #85d8a4; } /* optionnel si vous voulez un liseré */
+
+.badge-rdv{
+    background: var(--tag-green);
+    color: var(--tag-green-ink);
+    border-color: #bcefd1;
+    opacity:.75;
+}

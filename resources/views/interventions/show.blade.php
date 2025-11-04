@@ -132,6 +132,8 @@
                             @php
                                 $isUrgent = (int)($row->urgent ?? 0) === 1;
                                 $isMe     = (int)($row->concerne ?? 0) === 1;
+                                $isRdvVal = (int)($row->rdv_valide ?? 0) === 1;
+                                $isSite   = (int)($row->is_site ?? 0) === 1;
 
                                 $aff = [];
                                 if (!empty($row->affectations) && (is_array($row->affectations) || $row->affectations instanceof \Traversable)) {
@@ -164,8 +166,11 @@
                                 $affFull  = $affCount >= 3 ? implode(' · ', array_map(fn($x)=>$x['label'],$aff)) : null;
 
                                 $trClassBase = $isUrgent && $isMe ? 'row-urgent-me' : ($isUrgent ? 'row-urgent' : ($isMe ? 'row-me' : ''));
-                                $trClassTint = $isUrgent ? 'tint-urgent' : ($isMe ? 'tint-me' : '');
-                                $trClass     = trim($trClassBase.' '.$trClassTint);
+                                $tints = [];
+                                if ($isUrgent) $tints[] = 'tint-urgent';
+                                if ($isMe)     $tints[] = 'tint-me';
+                                if ($isRdvVal) $tints[] = 'tint-rdv';
+                                $trClass = trim($trClassBase.' '.implode(' ', $tints));
 
                                 $rowId   = 'r_'.preg_replace('/[^A-Za-z0-9_-]/','',$row->num_int);
                             @endphp
@@ -180,18 +185,19 @@
                                         <span class="tag combo" aria-label="{{ $affFull }}" title="{{ $affFull }}">{{ $affFull }}</span>
                                     @else
                                         <span class="todo-tags">
-                                            @foreach($aff as $a)
+                    @foreach($aff as $a)
                                                 @php $cls = $a['code'] ? 't-'.$a['code'] : 't-OTHER'; @endphp
                                                 <span class="tag {{ $cls }}">{{ $a['label'] }}</span>
                                             @endforeach
-                                        </span>
+                </span>
                                     @endif
                                 </td>
                                 <td class="col-flags">
-                                    <span class="flags">
-                                        @if($isUrgent)<span class="badge badge-urgent">URGENT</span>@endif
-                                        @if($isMe)<span class="badge badge-me">VOUS</span>@endif
-                                    </span>
+            <span class="flags">
+                @if($isUrgent)<span class="badge badge-urgent">URGENT</span>@endif
+                @if($isMe)<span class="badge badge-me">VOUS</span>@endif
+                @if($isRdvVal)<span class="badge badge-rdv">RDV validé</span>@endif   {{-- ★ badge --}}
+            </span>
                                 </td>
                                 <td class="col-actions">
                                     <div class="actions">

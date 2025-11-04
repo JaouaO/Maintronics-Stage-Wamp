@@ -29,14 +29,19 @@ class InterventionService
      * N'affiche que les interventions dont le NumInt commence par une agence autorisée.
      * - client        = contact_reel (fallback "(contact inconnu)")
      * - a_faire       = t_actions_vocabulaire.label (fallback objet_traitement, sinon "À préciser")
-     * - date/heure    = DATE/TIME(ae.rdv_prev_at)
+     * - date/heure    = COALESCE(tech_rdv_at, rdv_prev_at)
      * - urgent        = ae.urgent
      * - concerne      = (ae.reaffecte_code == $codeSal)
-     * - tri           = tier asc, rdv_prev_at (les NULL en dernier), NumInt asc
+     * - rdv_validé    = (ae.tech_rdv_at non NULL)
+     * - is_site       = (ti.LieuInt LIKE 'site%')
+     * - tri           = tier asc, COALESCE(tech_rdv_at, rdv_prev_at) (NULL en dernier), NumInt asc
      *
      * Filtrage agence :
      * - $agencesAutorisees = liste d'agences whitelistées (préfixes de NumInt)
      * - $selectedAgence (optionnel) = si fourni et ∈ $agencesAutorisees, on filtre uniquement sur celle-ci
+     *
+     * NOTE : pas de filtre obligatoire sur reaffecte_code/rdv_prev_at → on les affiche même vides,
+     *        notamment les interventions "site%" non assignées.
      */
     public function listPaginatedSimple(
         int     $perPage = 25,
@@ -81,6 +86,9 @@ class InterventionService
             if ($q === '') $q = null;
         }
 
+        // COALESCE date affichée
+        $dtCoalesce = "COALESCE(ae.tech_rdv_at, ae.rdv_prev_at)";
+
         $query = DB::table('t_actions_etat as ae')
             ->leftJoin('t_actions_vocabulaire as v', function ($join) {
                 $join->on('v.code', '=', 'ae.objet_traitement')
@@ -89,9 +97,11 @@ class InterventionService
             ->leftJoin('t_intervention as ti', 'ti.NumInt', '=', 'ae.NumInt')
             ->selectRaw("
                 ae.NumInt AS num_int,
+
                 COALESCE(NULLIF(ae.contact_reel,''), '(contact inconnu)') AS client,
-                DATE(ae.rdv_prev_at) AS date_prev,
-                TIME(ae.rdv_prev_at) AS heure_prev,
+
+                DATE($dtCoalesce) AS date_prev,
+                TIME($dtCoalesce) AS heure_prev,
 
                 ae.reaffecte_code,
                 ae.urgent,
@@ -101,10 +111,16 @@ class InterventionService
                 v.code  AS a_faire_code,
                 COALESCE(NULLIF(v.label,''), COALESCE(NULLIF(ae.objet_traitement,''), 'À préciser')) AS a_faire_label,
 
-                ti.Marque AS marque,
+                ti.Marque      AS marque,
                 ti.VilleLivCli AS ville,
-                ti.CPLivCli   AS cp,
+                ti.CPLivCli    AS cp,
                 ae.commentaire AS commentaire,
+
+                -- Nouveaux champs/flags
+                ae.tech_rdv_at           AS tech_rdv_at,
+                CASE WHEN ae.tech_rdv_at IS NOT NULL THEN 1 ELSE 0 END AS rdv_valide,
+                ti.LieuInt               AS lieu_int,
+                CASE WHEN ti.LieuInt LIKE 'site%' THEN 1 ELSE 0 END AS is_site,
 
                 CASE
                   WHEN ae.urgent=1 AND ae.reaffecte_code = ? THEN 0
@@ -123,7 +139,7 @@ class InterventionService
             }
         });
 
-        // --- Scope
+        // --- Scope (on conserve la logique existante)
         $scopeNorm = $scope ? strtolower($scope) : null;
         if ($scopeNorm === 'urgent') {
             $query->where('ae.urgent', 1);
@@ -142,19 +158,20 @@ class InterventionService
                 $w->where('ae.NumInt', 'like', $like)
                     ->orWhere('ae.contact_reel', 'like', $like)
                     ->orWhere('v.label', 'like', $like)
-                    ->orWhere('ae.objet_traitement', 'like', $like);
+                    ->orWhere('ae.objet_traitement', 'like', $like)
+                    ->orWhere('ti.VilleLivCli', 'like', $like)
+                    ->orWhere('ti.CPLivCli', 'like', $like);
             });
         }
 
-        // --- Tri : priorité (tier) puis rdv, puis NumInt
+        // --- Tri : priorité (tier) puis COALESCE(tech_rdv_at, rdv_prev_at), puis NumInt
         $query->orderBy('tier', 'asc')
-            ->orderByRaw("ae.rdv_prev_at IS NULL ASC")
-            ->orderBy('ae.rdv_prev_at', 'asc')
-            ->orderBy('ae.NumInt', 'asc');
+            ->orderByRaw("$dtCoalesce IS NULL ASC")
+              ->orderByRaw("$dtCoalesce ASC")
+              ->orderBy('ae.NumInt', 'asc');
 
         return $query->paginate($perPage);
     }
-
 
     /**
      * Variante non paginée (même logique de filtre/tri) si besoin ailleurs.
