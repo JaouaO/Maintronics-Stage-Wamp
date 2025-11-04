@@ -3,10 +3,12 @@
     const $  = (sel, ctx) => (ctx || document).querySelector(sel);
     const $$ = (sel, ctx) => Array.from((ctx || document).querySelectorAll(sel));
 
-    const filterForm = $('#filterForm');
+
     const scopeInput = $('#scope');
     const qInput     = $('#q');
-    const perPage    = $('#perpage');
+
+
+    // --- NEW: autosubmit Agence & Lieu (la recherche reste sans autosubmit)
 
     /* Effacer la recherche (ne soumet pas – on attend “Appliquer”) */
     const clearBtn = $('.b-clear');
@@ -101,5 +103,91 @@
             win.document.write('<p style="padding:12px;color:#a00">Erreur de chargement de l’historique.</p>');
             win.document.close();
         }
+    });
+})();
+
+// === Modale "infos utilisateur" ===
+(() => {
+    const openBtn = document.getElementById('openUserModal');
+    const modal   = document.getElementById('userInfoModal');
+    if (!openBtn || !modal) return;
+
+    const panel = modal.querySelector('.modal-panel');
+    const close = () => {
+        modal.setAttribute('hidden', '');
+        document.body.style.overflow = '';
+        openBtn.focus();
+    };
+    const open = () => {
+        modal.removeAttribute('hidden');
+        document.body.style.overflow = 'hidden';
+        panel && panel.focus();
+    };
+
+    openBtn.addEventListener('click', open);
+    modal.addEventListener('click', (e) => {
+        if (e.target.matches('[data-close]') || e.target.classList.contains('modal-backdrop')) close();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !modal.hasAttribute('hidden')) close();
+    });
+})();
+
+// === Tri "datetime" strict sur data-ts du <tr> ; dates nulles toujours en bas
+(() => {
+    const table = document.getElementById('intervTable');
+    if (!table) return;
+
+    const tbody = table.tBodies[0];
+
+    function getPairs() {
+        const rows = Array.from(tbody.querySelectorAll('tr.row[data-row-id]'));
+        return rows.map(r => {
+            const id  = r.getAttribute('data-row-id');
+            const det = id ? tbody.querySelector(`tr.row-detail[data-detail-for="${id}"]`) : null;
+            const ts  = Number(r.dataset.ts); // NaN si vide
+            const num = r.querySelector('.col-id')?.textContent.trim() ?? '';
+            return { r, det, ts, num };
+        });
+    }
+
+    function sortDatetime(asc) {
+        const pairs = getPairs();
+
+        pairs.sort((A, B) => {
+            const aF = Number.isFinite(A.ts);
+            const bF = Number.isFinite(B.ts);
+
+            // 1) Les lignes AVEC date passent avant les lignes SANS date (dans les deux sens)
+            if (aF !== bF) return aF ? -1 : 1;
+
+            // 2) Les deux ont une date → comparer la valeur
+            if (A.ts !== B.ts) return asc ? (A.ts - B.ts) : (B.ts - A.ts);
+
+            // 3) Égalité → fallback stable sur le N° d'interv
+            return asc
+                ? A.num.localeCompare(B.num, 'fr', { numeric: true })
+                : B.num.localeCompare(A.num, 'fr', { numeric: true });
+        });
+
+        // Réinsertion (ligne + détail juste après)
+        pairs.forEach(({ r, det }) => {
+            tbody.appendChild(r);
+            if (det) tbody.appendChild(det);
+        });
+    }
+
+    // Écoute uniquement sur le TH "Date / Heure"
+    table.tHead?.addEventListener('click', (e) => {
+        const th = e.target.closest('th.col-dt[data-sort="datetime"]');
+        if (!th) return;
+
+        const asc = !(th.dataset.order === 'asc');
+        th.dataset.order = asc ? 'asc' : 'desc';
+
+        // Visuel : on n’affiche l’état que sur cette colonne
+        table.querySelectorAll('th[data-sort]').forEach(x => { if (x !== th) x.removeAttribute('data-order'); });
+
+        sortDatetime(asc);
     });
 })();

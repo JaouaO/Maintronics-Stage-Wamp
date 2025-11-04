@@ -102,44 +102,46 @@ class MainController extends Controller
         $perPage = (int)($v['per_page'] ?? 10);
         $q       = $v['q'] ?? null;
         $scope   = $v['scope'] ?? null;
+        $lieu    = $v['lieu'] ?? 'all'; // NEW: all|site|labo
 
         $agencesAutorisees = array_values((array) session('agences_autorisees', []));
         $codeSal           = (string) session('codeSal', '');
-        $defaultAgence     = (string) session('defaultAgence', ''); // rempli au login si dispo
+        $defaultAgence     = (string) session('defaultAgence', '');
 
-        // Sélection courante (query ?ag=...)
         $agParam = (string) $request->query('ag', '');
         $hasMany = count($agencesAutorisees) > 1;
 
-        // Résolution de l’agence active
+        // Résolution agence active
         $selectedAg = null;
         if ($agParam && in_array($agParam, $agencesAutorisees, true)) {
             $selectedAg = $agParam;
         } elseif ($agParam === '_ALL' && $hasMany) {
-            $selectedAg = null; // toutes
+            $selectedAg = null;
         } else {
             if ($defaultAgence && in_array($defaultAgence, $agencesAutorisees, true)) {
                 $selectedAg = $defaultAgence;
             } elseif (!$hasMany && !empty($agencesAutorisees)) {
                 $selectedAg = $agencesAutorisees[0];
             } else {
-                $selectedAg = null; // fallback = toutes si plusieurs
+                $selectedAg = null;
             }
         }
 
         $rows = $this->interventionService
-            ->listPaginatedSimple($perPage, $agencesAutorisees, $codeSal, $q, $scope, $selectedAg);
+            ->listPaginatedSimple($perPage, $agencesAutorisees, $codeSal, $q, $scope, $selectedAg, $lieu); // ⬅ NEW param
 
         return view('interventions.show', [
-            'rows'                => $rows,
-            'perPage'             => $perPage,
-            'q'                   => $q,
-            'scope'               => $scope,
-            'agencesAutorisees'   => $agencesAutorisees,
-            'ag'                  => $selectedAg,   // agence active (null => toutes)
-            'defaultAgence'       => $defaultAgence,
+            'rows'              => $rows,
+            'perPage'           => $perPage,
+            'q'                 => $q,
+            'scope'             => $scope,
+            'agencesAutorisees' => $agencesAutorisees,
+            'ag'                => $selectedAg,
+            'defaultAgence'     => $defaultAgence,
+            'lieu'              => $lieu,  // ⬅ NEW pour la vue
         ]);
     }
+
 
 
 
@@ -179,6 +181,8 @@ class MainController extends Controller
                 ->route('interventions.show', ['id' => session('id')])
                 ->with('error', 'Intervention introuvable.');
         }
+
+
 
         // ↓ Liste unifiée des personnes sélectionnables pour ce dossier
         $people = $this->accessInterventionService->listPeopleForNumInt($numInt);

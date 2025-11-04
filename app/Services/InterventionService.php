@@ -49,7 +49,9 @@ class InterventionService
         ?string $codeSal = null,
         ?string $q = null,
         ?string $scope = null,
-        ?string $selectedAgence = null
+        ?string $selectedAgence = null,
+        string  $lieu = 'all'
+
     ): LengthAwarePaginator
     {
         // --- normalise et whiteliste les agences autorisées
@@ -77,6 +79,7 @@ class InterventionService
             }
         }
 
+
         // --- sanitisation "q" défensive
         $q = is_string($q) ? trim($q) : null;
         if ($q !== null) {
@@ -96,39 +99,56 @@ class InterventionService
             })
             ->leftJoin('t_intervention as ti', 'ti.NumInt', '=', 'ae.NumInt')
             ->selectRaw("
-                ae.NumInt AS num_int,
+    ae.NumInt AS num_int,
 
-                COALESCE(NULLIF(ae.contact_reel,''), '(contact inconnu)') AS client,
+COALESCE(
+  NULLIF(TRIM(ti.NomLivCli),''),
+  NULLIF(TRIM(ae.contact_reel),''),
+  '(contact inconnu)'
+) AS client,
 
-                DATE($dtCoalesce) AS date_prev,
-                TIME($dtCoalesce) AS heure_prev,
+    DATE($dtCoalesce) AS date_prev,
+    TIME($dtCoalesce) AS heure_prev,
 
-                ae.reaffecte_code,
-                ae.urgent,
+    ae.reaffecte_code,
+    ae.urgent,
 
-                CASE WHEN ae.reaffecte_code = ? THEN 1 ELSE 0 END AS concerne,
+    CASE WHEN ae.reaffecte_code = ? THEN 1 ELSE 0 END AS concerne,
 
-                v.code  AS a_faire_code,
-                COALESCE(NULLIF(v.label,''), COALESCE(NULLIF(ae.objet_traitement,''), 'À préciser')) AS a_faire_label,
+    v.code  AS a_faire_code,
+    COALESCE(NULLIF(v.label,''), COALESCE(NULLIF(ae.objet_traitement,''), 'À préciser')) AS a_faire_label,
 
-                ti.Marque      AS marque,
-                ti.VilleLivCli AS ville,
-                ti.CPLivCli    AS cp,
-                ae.commentaire AS commentaire,
+    -- Champs t_intervention (déjà certains, on complète)
+    ti.Marque      AS marque,
+    ti.VilleLivCli AS ville,
+    ti.CPLivCli    AS cp,
+    ti.LieuInt     AS lieu_int,
 
-                -- Nouveaux champs/flags
-                ae.tech_rdv_at           AS tech_rdv_at,
-                CASE WHEN ae.tech_rdv_at IS NOT NULL THEN 1 ELSE 0 END AS rdv_valide,
-                ti.LieuInt               AS lieu_int,
-                CASE WHEN ti.LieuInt LIKE 'site%' THEN 1 ELSE 0 END AS is_site,
+    -- NOUVEAUX CHAMPS récupérés dans t_intervention
+    ti.CodeTech    AS tech_code,
+    ti.NomLivCli   AS nom_liv_cli,
+    ti.TelLivCli   AS tel_liv_cli,
+    ti.EmailLivCli AS email_liv_cli,
+    /* si AdLivCli est BLOB latin1 et que vous voulez l’UTF-8 directement */
+    /* CONVERT(CAST(ti.AdLivCli AS CHAR CHARACTER SET latin1) USING utf8mb4) AS ad_liv_cli, */
+    ti.AdLivCli    AS ad_liv_cli,
+    ti.TypeApp     AS type_app,
 
-                CASE
-                  WHEN ae.urgent=1 AND ae.reaffecte_code = ? THEN 0
-                  WHEN ae.urgent=1 THEN 1
-                  WHEN ae.reaffecte_code = ? THEN 2
-                  ELSE 3
-                END AS tier
-            ", [$codeSal, $codeSal, $codeSal]);
+    ae.commentaire AS commentaire,
+
+    ae.tech_rdv_at           AS tech_rdv_at,
+    CASE WHEN ae.tech_rdv_at IS NOT NULL THEN 1 ELSE 0 END AS rdv_valide,
+
+    CASE WHEN ti.LieuInt LIKE 'site%' THEN 1 ELSE 0 END AS is_site,
+
+    CASE
+      WHEN ae.urgent=1 AND ae.reaffecte_code = ? THEN 0
+      WHEN ae.urgent=1 THEN 1
+      WHEN ae.reaffecte_code = ? THEN 2
+      ELSE 3
+    END AS tier
+", [$codeSal, $codeSal, $codeSal]);
+
 
         // --- Filtre agences (par préfixe de NumInt)
         $query->where(function ($qW) use ($toFilter) {
@@ -138,6 +158,15 @@ class InterventionService
                 else          $qW->orWhere('ae.NumInt', 'like', $pattern);
             }
         });
+
+        // --- NEW: filtre LIEU (site / labo / all)
+        if ($lieu === 'site') {
+            $query->whereRaw('LOWER(ti.LieuInt) LIKE "site%"');
+        } elseif ($lieu === 'labo') {
+            $query->whereRaw('LOWER(ti.LieuInt) LIKE "labo%"');
+        }
+// 'all' => pas de filtre
+
 
         // --- Scope (on conserve la logique existante)
         $scopeNorm = $scope ? strtolower($scope) : null;
@@ -160,7 +189,8 @@ class InterventionService
                     ->orWhere('v.label', 'like', $like)
                     ->orWhere('ae.objet_traitement', 'like', $like)
                     ->orWhere('ti.VilleLivCli', 'like', $like)
-                    ->orWhere('ti.CPLivCli', 'like', $like);
+                    ->orWhere('ti.CPLivCli', 'like', $like)
+                    ->orWhere('ti.NomLivCli', 'like', $like);
             });
         }
 
@@ -191,7 +221,11 @@ class InterventionService
         $rows = DB::table('t_actions_etat as ae')
             ->selectRaw("
     ae.NumInt AS num_int,
-    COALESCE(NULLIF(ae.contact_reel,''), '(contact inconnu)') AS client,
+COALESCE(
+  NULLIF(TRIM(ti.NomLivCli),''),
+  NULLIF(TRIM(ae.contact_reel),''),
+  '(contact inconnu)'
+) AS client,
     COALESCE(NULLIF(ae.objet_traitement,''), 'À préciser') AS a_faire,
     DATE(ae.rdv_prev_at) AS date_prev,
     TIME(ae.rdv_prev_at) AS heure_prev,

@@ -9,12 +9,77 @@
         <div class="header b-header">
             <h1>Interventions</h1>
 
-            <a class="btn-logout"
-               href="{{ route('deconnexion') }}"
-               title="Déconnexion">
-                <span class="ico">↪</span> Déconnexion
-            </a>
+            <div class="user-actions">
+                {{-- Chip utilisateur (nom + bouton info) --}}
+                <div  title="Informations utilisateur">
+                    <span class="user-name">{{ $data->NomSal ?? session('codeSal') }}</span>
+                    <button id="openUserModal"
+                            class="btn-info-circle"
+                            type="button"
+                            aria-haspopup="dialog"
+                            aria-controls="userInfoModal"
+                            title="Voir les informations de la session">
+                        i
+                    </button>
+                </div>
+
+                <a class="btn-logout"
+                   href="{{ route('deconnexion') }}"
+                   title="Déconnexion">
+                    <span class="ico">↪</span> Déconnexion
+                </a>
+            </div>
         </div>
+
+        {{-- …votre code… --}}
+
+        {{-- === Modale infos utilisateur === --}}
+        <div class="modal" id="userInfoModal" role="dialog" aria-modal="true" aria-labelledby="userModalTitle" hidden>
+            <div class="modal-backdrop" data-close></div>
+            <div class="modal-panel" role="document" tabindex="-1">
+                <div class="modal-header">
+                    <h2 id="userModalTitle">Informations de la session</h2>
+                    <button class="icon-toggle" type="button" data-close aria-label="Fermer">✕</button>
+                </div>
+
+                <div class="modal-body">
+                    <dl class="kv">
+                        <dt>Nom</dt>
+                        <dd>{{ $data->NomSal ?? '—' }}</dd>
+
+                        <dt>Identifiant</dt>
+                        <dd>{{ $data->CodeSal ?? session('codeSal') }}</dd>
+
+                        <dt>Agence courante</dt>
+                        <dd>{{ session('defaultAgence') ?: ($data->CodeAgSal ?? '—') }}</dd>
+
+                        <dt>IP</dt>
+                        <dd>{{ $data->IP ?? request()->ip() }}</dd>
+
+                        <dt>Dernier accès</dt>
+                        <dd>{{ $data->DateAcces ?? '—' }}</dd>
+                    </dl>
+
+                    @php $ags = (array) session('agences_autorisees', []); @endphp
+                    @if(!empty($ags))
+                        <div class="sub">
+                            <strong>Agences autorisées :</strong>
+                            <div class="tags-list" style="margin-top:6px; display:flex; flex-wrap:wrap; gap:6px">
+                                @foreach($ags as $agc)
+                                    <span class="tag t-OTHER">{{ $agc }}</span>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+                </div>
+
+                <div class="modal-footer">
+                    <a class="btn" href="{{ route('deconnexion') }}">Se déconnecter</a>
+                    <button class="btn-light" type="button" data-close>Fermer</button>
+                </div>
+            </div>
+        </div>
+
 
         @if ($errors->any())
             <div class="alert alert-danger" role="alert">
@@ -32,17 +97,20 @@
                 {{-- Scope piloté par les chips --}}
                 <input type="hidden" name="scope" id="scope" value="{{ $scope ?? '' }}">
 
-                {{-- === AGENCE === --}}
+                {{-- Agences --}}
                 @php
                     $ags = array_values((array)($agencesAutorisees ?? []));
                     $hasMany = count($ags) > 1;
                     $agSelected = $ag ?? null; // null => toutes (si $hasMany)
+                    $lieu = $lieu ?? 'all';
                 @endphp
+
                 <div class="b-agence">
                     <label for="ag">Agence</label>
                     <select id="ag" name="ag" {{ (!$hasMany && !empty($ags)) ? 'disabled' : '' }}>
                         @if($hasMany)
-                            <option value="_ALL" {{ $agSelected === null ? 'selected' : '' }}>Toutes les agences</option>
+                            <option value="_ALL" {{ $agSelected === null ? 'selected' : '' }}>Toutes les agences
+                            </option>
                         @endif
                         @foreach($ags as $agc)
                             <option value="{{ $agc }}" {{ $agSelected === $agc ? 'selected' : '' }}>{{ $agc }}</option>
@@ -54,8 +122,19 @@
                     @endif
                 </div>
 
+                {{-- Lieu (Tous / Site / Laboratoire) --}}
+                <div class="b-lieu">
+                    <label for="lieu">Lieu</label>
+                    <select id="lieu" name="lieu">
+                        <option value="all" {{ $lieu==='all'  ? 'selected' : '' }}>Tous</option>
+                        <option value="site" {{ $lieu==='site' ? 'selected' : '' }}>Site</option>
+                        <option value="labo" {{ $lieu==='labo' ? 'selected' : '' }}>Laboratoire</option>
+                    </select>
+                </div>
+
                 {{-- Recherche --}}
                 <div class="b-search">
+                    <label for="q" class="sr-only">Rechercher</label>
                     <input
                         type="search"
                         id="q"
@@ -71,7 +150,7 @@
                     @enderror
                 </div>
 
-                {{-- Filtres (chips cliquables) --}}
+                {{-- Filtres (chips) --}}
                 @php $scope = $scope ?? ''; @endphp
                 @php
                     $isUrg = in_array($scope, ['urgent','both'], true);
@@ -79,7 +158,8 @@
                 @endphp
                 <div class="b-filters">
                     <span class="b-label">Filtres :</span>
-                    <button type="button" class="b-chip b-chip-urgent {{ $isUrg ? 'is-active' : '' }}" data-role="urgent">
+                    <button type="button" class="b-chip b-chip-urgent {{ $isUrg ? 'is-active' : '' }}"
+                            data-role="urgent">
                         <span class="dot"></span> URGENT
                     </button>
                     <button type="button" class="b-chip b-chip-me {{ $isMe ? 'is-active' : '' }}" data-role="me">
@@ -87,7 +167,7 @@
                     </button>
                 </div>
 
-                {{-- Lignes / page (pas d’autosubmit) --}}
+                {{-- Lignes / page --}}
                 <div class="b-perpage">
                     <label for="perpage">Lignes / page</label>
                     <select id="perpage" name="per_page">
@@ -101,6 +181,7 @@
                     <button class="btn" type="submit">Appliquer</button>
                 </div>
             </form>
+
         </div>
 
         <div class="card">
@@ -109,24 +190,27 @@
                     <table class="table" id="intervTable">
                         <colgroup>
                             <col class="colw-id">
+                            <col class="colw-code"> {{-- NOUVEAU --}}
                             <col class="colw-client">
-                            <col class="colw-date">
-                            <col class="colw-heure">
+                            <col class="colw-dt">
                             <col class="colw-todo">
                             <col class="colw-flags">
                             <col class="colw-act">
                         </colgroup>
+
                         <thead>
                         <tr>
-                            <th class="col-id" data-sort="text">N° Interv</th>
-                            <th class="col-client" data-sort="text">Client</th>
-                            <th class="col-date" data-sort="date">Date</th>
-                            <th class="col-heure" data-sort="time">Heure</th>
-                            <th class="col-todo" data-sort="text">À faire</th>
+                            <th class="col-id">N° Interv</th>
+                            <th class="col-code">Code</th> {{-- NOUVEAU --}}
+                            <th class="col-client">Client</th>
+                            <th class="col-dt" data-sort="datetime">Date / Heure</th>
+                            <th class="col-todo">À faire</th>
                             <th class="col-flags"></th>
                             <th class="col-actions">Actions</th>
                         </tr>
                         </thead>
+
+
                         <tbody id="rowsBody">
                         @forelse($rows as $row)
                             @php
@@ -173,16 +257,53 @@
                                 $trClass = trim($trClassBase.' '.implode(' ', $tints));
 
                                 $rowId   = 'r_'.preg_replace('/[^A-Za-z0-9_-]/','',$row->num_int);
+                                 // Code 'tech' si RDV validé, sinon 'salarié' (reaffecte_code).
+    // On tolère l'absence de tech_code : fallback sur reaffecte_code.
+    $codeRaw = $isRdvVal ? ($row->tech_code ?? $row->reaffecte_code ?? null)
+                         : ($row->reaffecte_code ?? $row->tech_code ?? null);
+
+    $code4 = null;
+    if ($codeRaw) {
+        $clean = preg_replace('/[^A-Za-z0-9]/', '', (string)$codeRaw);
+        $code4 = $clean !== '' ? strtoupper(mb_substr($clean, 0, 4)) : null;
+    }
                             @endphp
 
-                            <tr class="row {{ $trClass }}" data-href="{{ route('interventions.edit', ['numInt' => $row->num_int]) }}" data-row-id="{{ $rowId }}">
+                            @php
+                                // Prépare l’affichage & le tri
+                                $ts = null; $dtTxt = '—'; $tmTxt = '—'; $isToday = false;
+
+                                if (!empty($row->date_prev) || !empty($row->heure_prev)) {
+                                    try {
+                                        $dtObj = \Carbon\Carbon::parse(trim(($row->date_prev ?? '') . ' ' . ($row->heure_prev ?? '00:00:00')));
+                                        $ts    = $dtObj->timestamp;
+                                        $dtTxt = $row->date_prev ? $dtObj->format('d/m/Y') : '—';
+                                        $tmTxt = $row->heure_prev ? $dtObj->format('H:i')   : '—';
+                                        $isToday = $dtObj->isToday();
+                                    } catch (\Throwable $e) { /* ignore */ }
+                                }
+                            @endphp
+
+
+                            <tr class="row {{ $trClass }}"
+                                data-href="{{ route('interventions.edit', ['numInt' => $row->num_int]) }}"
+                                data-row-id="{{ $rowId }}"
+                                data-ts="{{ $ts ?? '' }}">
                                 <td class="col-id">{{ $row->num_int }}</td>
+                                <td class="col-code">
+                                    <span class="code-chip">{{ $code4 ?? '—' }}</span>
+                                </td>
                                 <td class="col-client">{{ $row->client }}</td>
-                                <td class="col-date">{{ $row->date_prev ? \Carbon\Carbon::parse($row->date_prev)->format('d/m/Y') : '—' }}</td>
-                                <td class="col-heure">{{ $row->heure_prev ? \Carbon\Carbon::parse($row->heure_prev)->format('H:i') : '—' }}</td>
+                                <td class="col-dt">
+                                    <div class="dt-wrap">
+                                        <span class="dt-date">{{ $dtTxt }}</span>
+                                        <span class="dt-time">{{ $tmTxt }}</span>
+                                    </div>
+                                </td>
                                 <td class="col-todo">
                                     @if($affCount >= 3)
-                                        <span class="tag combo" aria-label="{{ $affFull }}" title="{{ $affFull }}">{{ $affFull }}</span>
+                                        <span class="tag combo" aria-label="{{ $affFull }}"
+                                              title="{{ $affFull }}">{{ $affFull }}</span>
                                     @else
                                         <span class="todo-tags">
                     @foreach($aff as $a)
@@ -194,21 +315,30 @@
                                 </td>
                                 <td class="col-flags">
             <span class="flags">
-                @if($isUrgent)<span class="badge badge-urgent">URGENT</span>@endif
-                @if($isMe)<span class="badge badge-me">VOUS</span>@endif
-                @if($isRdvVal)<span class="badge badge-rdv">RDV validé</span>@endif   {{-- ★ badge --}}
+                @if($isUrgent)
+                    <span class="badge badge-urgent">URGENT</span>
+                @endif
+                @if($isMe)
+                    <span class="badge badge-me">VOUS</span>
+                @endif
+                @if($isRdvVal)
+                    <span class="badge badge-rdv">RDV validé</span>
+                @endif   {{-- ★ badge --}}
             </span>
                                 </td>
                                 <td class="col-actions">
                                     <div class="actions">
-                                        <a class="btn js-open" href="{{ route('interventions.edit', ['numInt' => $row->num_int]) }}">Ouvrir</a>
+                                        <a class="btn js-open"
+                                           href="{{ route('interventions.edit', ['numInt' => $row->num_int]) }}">Ouvrir</a>
                                         <button class="btn btn-light js-open-history" type="button"
                                                 data-num-int="{{ $row->num_int }}"
                                                 data-history-url="{{ route('interventions.history', $row->num_int) }}"
-                                                title="Historique">Historique</button>
+                                                title="Historique">Historique
+                                        </button>
                                         <button class="icon-toggle js-row-toggle" type="button"
                                                 aria-expanded="false" aria-controls="det-{{ $rowId }}"
-                                                title="Plus d’infos" data-row-id="{{ $rowId }}">▾</button>
+                                                title="Plus d’infos" data-row-id="{{ $rowId }}">▾
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -219,13 +349,28 @@
                                         <div><strong>N° :</strong> {{ $row->num_int }}</div>
                                         <div><strong>Client :</strong> {{ $row->client }}</div>
                                         <div><strong>Marque :</strong> {{ $row->marque ?? '—' }}</div>
-                                        <div><strong>Ville / CP :</strong> {{ $row->ville ?? '—' }} @if(!empty($row->cp)) ({{ $row->cp }}) @endif</div>
-                                        <div class="full"><strong>Commentaire :</strong> {{ $row->commentaire ?? '—' }}</div>
+                                        <div><strong>Ville / CP
+                                                :</strong> {{ $row->ville ?? '—' }} @if(!empty($row->cp))
+                                                ({{ $row->cp }})
+                                            @endif</div>
+                                        <div><strong>Tél. livraison :</strong> {{ $row->tel_liv_cli ?? '—' }}</div>
+                                        <div class="full"><strong>Email livraison
+                                                :</strong> {{ $row->email_liv_cli ?? '—' }}</div>
+                                        <div class="full"><strong>Adresse livraison
+                                                :</strong> {{ $row->ad_liv_cli ?? '—' }}</div>
+                                        <div><strong>Type appareil :</strong> {{ $row->type_app ?? '—' }}</div>
+
+                                        <div class="full"><strong>Commentaire :</strong> {{ $row->commentaire ?? '—' }}
+                                        </div>
                                     </div>
                                 </td>
                             </tr>
                         @empty
-                            <tr><td colspan="7" style="text-align:center;color:var(--mut);padding:16px">Aucune intervention</td></tr>
+                            <tr>
+                                <td colspan="7" style="text-align:center;color:var(--mut);padding:16px">Aucune
+                                    intervention
+                                </td>
+                            </tr>
                         @endforelse
                         </tbody>
                     </table>
@@ -233,11 +378,13 @@
 
                 <div id="pager" class="pager">
                     {{ $rows->onEachSide(1)->appends([
-                        'per_page' => $perPage,
-                        'q'        => $q,
-                        'scope'    => $scope,
-                        'ag'       => $ag ?? ($hasMany ? '_ALL' : ($ags[0] ?? null)),
-                    ])->links('pagination.clean') }}
+    'per_page' => $perPage,
+    'q'        => $q,
+    'scope'    => $scope,
+    'ag'       => $ag ?? ($hasMany ? '_ALL' : ($ags[0] ?? null)),
+    'lieu'     => $lieu,
+  ])->links('pagination.clean') }}
+
                 </div>
             </div>
         </div>
@@ -248,11 +395,13 @@
                 <a class="btn" href="{{ route('interventions.create') }}">➕ Nouvelle intervention</a>
                 <a class="btn" href="{{ url()->previous() }}">Retour</a>
                 <a class="btn" href="{{ route('interventions.show', [
-                        'per_page' => $perPage,
-                        'q'        => $q,
-                        'scope'    => $scope,
-                        'ag'       => $ag ?? ($hasMany ? '_ALL' : ($ags[0] ?? null)),
-                    ]) }}">Actualiser</a>
+    'per_page' => $perPage,
+    'q'        => $q,
+    'scope'    => $scope,
+    'ag'       => $ag ?? ($hasMany ? '_ALL' : ($ags[0] ?? null)),
+    'lieu'     => $lieu,
+]) }}">Actualiser</a>
+
             </div>
         </div>
     </div>

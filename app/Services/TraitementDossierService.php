@@ -39,7 +39,11 @@ class TraitementDossierService
 
         $bitsTrait   = $etat->bits_traitement  ?? '';
         $objetTrait  = $etat->objet_traitement ?? '';
-        $contactReel = $etat->contact_reel     ?? '';
+        // ✅ Préférence d’affichage du contact : NomLivCli (t_intervention) → contact_reel (actions_etat) → "(contact inconnu)"
+        $nomLivCli     = trim((string)($interv->NomLivCli ?? ''));
+        $contactFromAe = trim((string)($etat->contact_reel ?? ''));
+        $contactReel   = $nomLivCli !== '' ? $nomLivCli
+            : ($contactFromAe !== '' ? $contactFromAe : '(contact inconnu)');
 
         $isBitOn = static function (string $bits, int $i): bool {
             return isset($bits[$i]) && $bits[$i] === '1';

@@ -513,3 +513,5 @@
 [2025-11-03 13:56:10] local.DEBUG: urgent? {"raw":"0","bool":false} 
 [2025-11-03 13:57:01] local.DEBUG: urgent? {"raw":"0","bool":false} 
 [2025-11-03 13:57:23] local.DEBUG: urgent? {"raw":"0","bool":false} 
+[2025-11-04 09:46:14] local.DEBUG: urgent? {"raw":"0","bool":false} 
+[2025-11-04 09:46:40] local.DEBUG: urgent? {"raw":"1","bool":true} 

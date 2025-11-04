@@ -270,8 +270,9 @@ export function initAgenda() {
 
             if (info.count > 0) cell.classList.add('has-events');
             if (info.urgentCount > 0) cell.classList.add('has-urgent');
-            if (isBeforeToday(d)) cell.classList.add('muted');
             if (!inMonth && !isBeforeToday(d)) cell.classList.add('muted2');
+            if (isBeforeToday(d)) cell.classList.add('muted');
+
 
 // Ordre des signaux : validé (vert) -> urgent (rouge) -> temporaire (bleu)
             const signals = [];
