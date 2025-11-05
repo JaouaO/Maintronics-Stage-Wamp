@@ -11,16 +11,34 @@
             <div class="ro">{{ $objetTrait ?: '—' }}</div>
         </div>
 
-        {{-- Contact réel --}}
+        {{-- Contact réel + bouton infos client (depuis t_intervention) --}}
         <div class="grid2">
             <label for="contactReel">Contact réel</label>
-            <input type="text" id="contactReel" name="contact_reel"
-                   maxlength="255"
-                   value="{{ old('contact_reel', $contactReel) }}"
-                   class="{{ $errors->has('contact_reel') ? 'is-invalid' : '' }}"
-                   aria-invalid="{{ $errors->has('contact_reel') ? 'true' : 'false' }}">
-        </div>
 
+            <div class="with-info">
+                <input type="text" id="contactReel" name="contact_reel"
+                       maxlength="255"
+                       value="{{ old('contact_reel', $contactReel) }}"
+                       class="{{ $errors->has('contact_reel') ? 'is-invalid' : '' }}"
+                       aria-invalid="{{ $errors->has('contact_reel') ? 'true' : 'false' }}">
+
+                <button type="button"
+                        class="btn-info-circle info-btn"
+                        aria-haspopup="dialog" aria-controls="infoModal"
+                        title="Informations client"
+                        data-type="client"
+                        data-nom="{{ $interv->NomLivCli ?? '' }}"
+                        data-tel="{{ $interv->TelLivCli ?? '' }}"
+                        data-email="{{ $interv->EmailLivCli ?? '' }}"
+                        data-adr="{{ $interv->AdLivCli ?? '' }}"
+                        data-ville="{{ $interv->VilleLivCli ?? '' }}"
+                        data-cp="{{ $interv->CPLivCli ?? '' }}"
+                        data-typeapp="{{ $interv->TypeApp ?? '' }}"
+                        data-marque="{{ $interv->Marque ?? '' }}">
+                    i
+                </button>
+            </div>
+        </div>
         {{-- Bouton historique --}}
         <button id="openHistory"
                 class="btn btn-history btn-block"

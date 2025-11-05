@@ -346,6 +346,28 @@ tr.temporaire.same-dossier:hover { background: rgba(13,110,253,.14); }
 .center .box:first-of-type,.center .mserv{flex:0 0 auto}
 .center .mserv .body input#commentaire{height:34px}
 
+.with-info{
+    display:flex; align-items:center; gap:6px;
+}
+.with-info .btn-info-circle{ flex:0 0 auto; }
+.with-info{ display:flex; align-items:center; gap:6px; }
+
+.btn-info-circle{
+    width:24px; height:24px; border-radius:999px;
+    display:inline-flex; align-items:center; justify-content:center;
+    border:1px solid var(--line); background:#f7f7f9; cursor:pointer;
+    font-weight:700; line-height:1; font-size:12px; color:#3b4255;
+}
+.btn-info-circle:hover{ background:#fff }
+
+.client-chip{
+    display:inline-flex; align-items:center; gap:8px;
+    border:1px solid var(--line); background:#fff; padding:6px 8px; border-radius:999px;
+    box-shadow:0 1px 0 rgba(0,0,0,.02); margin:6px 0;
+}
+.client-name{ font-weight:600; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+
+
 /* =========================================================
    Responsive
    ========================================================= */

@@ -9,6 +9,18 @@
         // Pour le sélecteur
         TECHS: @json(($agendaPeople ?? collect())->pluck('CodeSal')->values()),
         NAMES: @json(($agendaPeople ?? collect())->mapWithKeys(fn($p)=>[$p->CodeSal=>$p->NomSal])),
+        // 🔵 Exposé depuis t_intervention
+        CLIENT: {
+            numInt:  @json($interv->NumInt),
+            nom:     @json($interv->NomLivCli),
+            tel:     @json($interv->TelLivCli),
+            email:   @json($interv->EmailLivCli),
+            adr:     @json($interv->AdLivCli),
+            ville:   @json($interv->VilleLivCli),
+            cp:      @json($interv->CPLivCli),
+            typeapp: @json($interv->TypeApp),
+            marque:  @json($interv->Marque),
+        }
     };
 </script>
 
