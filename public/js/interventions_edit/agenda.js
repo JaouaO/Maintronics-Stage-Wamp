@@ -419,14 +419,6 @@ export function initAgenda() {
     }
 
     function onValidateFromModal(ev) {
-        const warnOverwrite = _hasValidatedFn(); // validé quelque part pour CE dossier
-        const ok = confirm(
-            (warnOverwrite
-                    ? "Un RDV VALIDÉ existe déjà pour ce dossier.\nLe valider à nouveau va l'écraser.\n\n"
-                    : ""
-            ) + "Valider ce rendez-vous ?"
-        );
-        if (!ok) return;
 
         const form = document.getElementById('interventionForm');
         const btnVal = document.getElementById('btnValider');

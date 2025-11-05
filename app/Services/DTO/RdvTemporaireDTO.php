@@ -61,5 +61,22 @@ class RdvTemporaireDTO
         );
 
     }
+    public static function fromValidated(array $v, string $numInt, string $codeSalAuteur): self
+    {
+        return new self(
+            trim($numInt),
+            (string)$codeSalAuteur,
+            $v['rea_sal'] ?? null,
+            $v['date_rdv'] ?? null,
+            $v['heure_rdv'] ?? null,
+            (string)($v['commentaire'] ?? ''),
+            (string)($v['contact_reel'] ?? ''),
+            $v['code_postal'] ?? null,
+            $v['ville'] ?? null,
+            $v['marque'] ?? null,
+            (bool)($v['purge_validated'] ?? false)
+        );
+    }
+
 
 }

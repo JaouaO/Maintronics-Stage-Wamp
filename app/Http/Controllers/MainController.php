@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\NotBlankRequest;
+use App\Http\Requests\RdvTemporaireRequest;
 use App\Http\Requests\ShowInterventionsRequest;
 use App\Http\Requests\StoreInterventionRequest;
 use App\Http\Requests\SuggestNumIntRequest;
@@ -258,18 +259,17 @@ class MainController extends Controller
 
 
 // MainController::rdvTemporaire()
-    public function rdvTemporaire(Request $request, string $numInt): \Illuminate\Http\JsonResponse
+    public function rdvTemporaire(RdvTemporaireRequest $request, string $numInt): \Illuminate\Http\JsonResponse
     {
         try {
             $codeSalAuteur = (string) (session('codeSal') ?: 'system');
-            $dto = \App\Services\DTO\RdvTemporaireDTO::fromRequest($request, $numInt, $codeSalAuteur);
+            $dto = \App\Services\DTO\RdvTemporaireDTO::fromValidated($request->validated(), $numInt, $codeSalAuteur);
 
             $mode = $this->updateInterventionService->ajoutRdvTemporaire($dto);
 
             return response()->json(['ok' => true, 'mode' => $mode]);
 
         } catch (\RuntimeException $re) {
-            // Signal serveur pour "un RDV validé actif existe" → on renvoie 409 pour déclencher la confirmation UI
             if ($re->getMessage() === 'VALIDATED_EXISTS') {
                 return response()->json([
                     'ok'   => false,
@@ -278,17 +278,6 @@ class MainController extends Controller
                 ], 409);
             }
             throw $re;
-
-        } catch (\Illuminate\Database\QueryException $qe) {
-            $ei = $qe->errorInfo ?? [];
-            return response()->json([
-                'ok'       => false,
-                'type'     => 'QueryException',
-                'sqlstate' => $ei[0] ?? null,
-                'errno'    => $ei[1] ?? null,
-                'errmsg'   => $ei[2] ?? $qe->getMessage(),
-                'file'     => basename($qe->getFile()) . ':' . $qe->getLine(),
-            ], 500);
 
         } catch (\Illuminate\Validation\ValidationException $ve) {
             return response()->json(['ok' => false, 'errors' => $ve->errors()], 422);
