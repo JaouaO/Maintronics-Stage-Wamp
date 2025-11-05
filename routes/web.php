@@ -87,3 +87,7 @@ Route::middleware(['check.session', 'security.headers'])->group(function () use 
 
 // Fallback propre
 Route::fallback(fn() => redirect()->route('erreur')->with('message', 'Page introuvable.'));
+
+
+//API-map-tournée :
+Route::get('/tournee', 'TourPrepController@show')->name('tournee.show');

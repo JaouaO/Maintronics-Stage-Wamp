@@ -138,6 +138,14 @@ export function initAgenda() {
     }
     function pad2(n) { return String(n).padStart(2, '0'); }
 
+
+    function agRefOf(numInt) {
+        if (!numInt) return '';
+        return String(numInt).slice(0, 4).toUpperCase();
+    }
+
+
+
     async function fetchMonthData(d) {
         const first = startOfMonth(d);
         const gridStart = (() => {
@@ -300,6 +308,34 @@ export function initAgenda() {
 
         listTitle.textContent = fmtDayTitle(d);
         listRows.innerHTML = '';
+
+        // -- bouton "Préparer la tournée" (KIS)
+        const ymdStr = ymd(d);
+
+// priorité : agRef du dossier courant s'il existe, sinon du 1er évènement du jour
+        const agRefFromCtx = agRefOf(window.APP?.numInt);
+        const agRefFromList = () => {
+            const firstWithNumInt = (bucket.list || []).find(x => x?.num_int);
+            return agRefOf(firstWithNumInt?.num_int || '');
+        };
+        const agRef = agRefFromCtx || agRefFromList();
+
+// on enlève l’ancien bouton si on rouvre un autre jour
+        let oldBtn = document.getElementById('btnTournee');
+        oldBtn?.parentNode?.removeChild(oldBtn);
+
+// on met le bouton à droite du titre (simple et discret)
+        const btn = document.createElement('a');
+        btn.id = 'btnTournee';
+        btn.className = 'btn btn-sm';          // tes styles existants si dispo
+        btn.style.marginLeft = '8px';
+        btn.href = `/tournee?date=${encodeURIComponent(ymdStr)}&agref=${encodeURIComponent(agRef)}&mode=fast&opt=0`;
+        btn.target = '_blank';
+        btn.rel = 'noopener';
+        btn.textContent = agRef ? `🗺️ Tournée ${agRef}` : '🗺️ Tournée';
+
+        listTitle.appendChild(btn);
+
 
         if (!bucket.list.length) {
             const tr = document.createElement('tr');
