@@ -163,12 +163,16 @@ class CheckAutorisationsService
     private function computeDefaultAgence(array $agencesAutorisees, ?string $codeAg, ?string $codeSal): ?string
     {
         // Normalisation
-        $agences = array_values(array_unique(array_filter($agencesAutorisees, fn($x)=>is_string($x) && $x!=='')));
-        if (empty($agences)) {
-            return null;
-        }
+        $agences = array_values(array_unique(array_filter(
+            $agencesAutorisees,
+            fn($x) => is_string($x) && $x !== ''
+        )));
+        if (empty($agences)) return null;
 
-        $isSuper = in_array($codeAg, ['ADMI','PLUS','DOAG'], true);
+        // Mono-agence => on impose cette agence
+        if (count($agences) === 1) return $agences[0];
+
+        $isSuper = in_array($codeAg, ['ADMI', 'PLUS', 'DOAG'], true);
 
         if ($isSuper && $codeSal) {
             $pref = \Illuminate\Support\Facades\DB::table('t_resp')
@@ -177,21 +181,21 @@ class CheckAutorisationsService
                 ->value('CodeAgSal');
 
             if ($pref && in_array($pref, $agences, true)) {
-                return $pref;
+                return $pref; // préférence explicite
             }
 
-            // Pas de Defaut='O' valide → alpha
-            $sorted = $agences; sort($sorted, SORT_NATURAL | SORT_FLAG_CASE);
-            return $sorted[0] ?? null;
+            // 👇 Super-profil SANS préférence explicite => pas de défaut => "Toutes"
+            return null;
         }
 
-        // Utilisateur "standard"
+        // Utilisateur "standard" : s'il a une agence affectée et autorisée, on la prend
         if ($codeAg && in_array($codeAg, $agences, true)) {
             return $codeAg;
         }
 
-        $sorted = $agences; sort($sorted, SORT_NATURAL | SORT_FLAG_CASE);
-        return $sorted[0] ?? null;
+        // Plusieurs agences mais aucune claire → "Toutes"
+        return null;
     }
+
 
 }

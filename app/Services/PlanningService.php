@@ -31,7 +31,6 @@ class PlanningService
         $start = $range['start']->toDateString();
         $end   = $range['end']->toDateString();
 
-        // Normalisation whitelist
         $allowed = array_values(array_unique(array_map(
             fn($c) => strtoupper(trim((string)$c)), $allowedCodes ?? []
         )));
@@ -52,20 +51,17 @@ class PlanningService
             )
             ->leftJoin('t_actions_etat as e', 'e.NumInt', '=', 'p.NumIntRef')
             ->leftJoin('t_intervention as i', 'i.NumInt', '=', 'p.NumIntRef')
+            ->where('p.isObsolete', 0)                           // ⬅️ seulement actifs
             ->whereBetween('p.StartDate', [$start, $end])
             ->orderBy('p.StartDate')->orderBy('p.StartTime');
 
-        // 1) Tech précis => on montre tout son agenda (normalisé)
         if ($codeTech !== '_ALL') {
-            $q->where(DB::raw('TRIM(UPPER(p.CodeTech))'), '=', strtoupper(trim((string)$codeTech)));
-
-            // Option sécurité : si whitelist fournie et que le tech n’y est pas, on retourne vide.
-            if (!empty($allowed) && !self::matchesAllowed(strtoupper(trim((string)$codeTech)), $exacts, $prefixes)) {
+            $code = strtoupper(trim((string)$codeTech));
+            $q->where(DB::raw('TRIM(UPPER(p.CodeTech))'), '=', $code);
+            if (!empty($allowed) && !self::matchesAllowed($code, $exacts, $prefixes)) {
                 return ['ok'=>true,'from'=>$start,'to'=>$end,'events'=>[]];
             }
-        }
-        // 2) Mode _ALL => restreint aux personnes autorisées (exacts + wildcards)
-        else {
+        } else {
             if (!empty($exacts) || !empty($prefixes)) {
                 $q->where(function($w) use ($exacts, $prefixes) {
                     if (!empty($exacts)) {
@@ -80,7 +76,6 @@ class PlanningService
                     }
                 });
             } else {
-                // Pas d’autorisés => rien à afficher
                 return ['ok'=>true,'from'=>$start,'to'=>$end,'events'=>[]];
             }
         }
@@ -94,7 +89,7 @@ class PlanningService
 
             $events[] = [
                 'id' => $r->rid,
-                'code_tech'      => $r->CodeTech, // déjà TRIM/UPPER
+                'code_tech'      => $r->CodeTech,
                 'start_datetime' => $startIso,
                 'end_datetime'   => $endIso,
                 'label'          => $r->Label,
@@ -116,10 +111,11 @@ class PlanningService
     {
         if (in_array($code, $exacts, true)) return true;
         foreach ($prefixes as $p) {
-            if (str_starts_with($code, $p)) return true;
+            if (strpos($code, $p) === 0) return true; // compat 7.4
         }
         return false;
     }
+
 
 
 
@@ -149,10 +145,11 @@ class PlanningService
         return ['start' => $start, 'end' => $end];
     }
 
-    public function listTempsByNumInt(string $numInt): Collection
+    public function listTempsByNumInt(string $numInt): \Illuminate\Support\Collection
     {
         return DB::table('t_planning_technicien')
             ->where('NumIntRef', $numInt)
+            ->where('isObsolete', 0)                              // ⬅️ seulement actifs
             ->where(function ($w) {
                 $w->whereNull('IsValidated')->orWhere('IsValidated', 0);
             })

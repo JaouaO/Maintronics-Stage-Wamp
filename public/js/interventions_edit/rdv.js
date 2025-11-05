@@ -1,5 +1,23 @@
 // public/js/interventions/rdv.js
-import { withBtnLock, isInAgendaList, getAgendaCodes } from './utils.js';
+import { withBtnLock, isInAgendaList } from './utils.js';
+import { alreadyHasAnyForThisDossier, alreadyHasValidatedForThisDossier } from './agenda.js';
+
+
+function isFromTempModalEvent(target) {
+    if (!target) return false;
+    // 1) Attributs directs du bouton
+    if (target.dataset && (target.dataset.source === 'temp-modal' || target.dataset.skipTempWarning === '1')) {
+        return true;
+    }
+    // 2) Attribut sur le form
+    const formEl = document.getElementById('interventionForm');
+    if (formEl && formEl.dataset && formEl.dataset.source === 'temp-modal') {
+        return true;
+    }
+    // 3) Attribut sur un conteneur parent
+    const nearest = target.closest?.('[data-source="temp-modal"], [data-skip-temp-warning="1"]');
+    return !!nearest;
+}
 
 export function initRDV() {
     const form       = document.getElementById('interventionForm');
@@ -14,30 +32,12 @@ export function initRDV() {
     const elDate = document.getElementById('dtPrev');
     const elTime = document.getElementById('tmPrev');
 
-    // ADD — désactive le confirm inline éventuel du <form onsubmit="..."> pour éviter la double pop-up
+    // — éviter la double pop-up
     if (form && form.getAttribute('onsubmit')) {
         try { form.removeAttribute('onsubmit'); } catch {}
     }
 
-    // ADD — sait si un RDV validé existe déjà (depuis l’agenda, sans requête)
-    function hasExistingValidated(){
-        try {
-            if (typeof window.__agendaHasValidatedForThisDossier === 'function') {
-                return !!window.__agendaHasValidatedForThisDossier();
-            }
-            if (window.APP && typeof window.APP.hasValidatedForThisDossier === 'boolean') {
-                return !!window.APP.hasValidatedForThisDossier;
-            }
-        } catch(e) {}
-        return false;
-    }
-    // ADD — message d’avertissement “écrasera le RDV validé”
-    function overwriteWarnText(){
-        return "⚠️ Un RDV VALIDÉ existe déjà pour ce dossier.\n"
-            + "Le valider à nouveau va SUPPRIMER/ÉCRASER l’autre RDV validé.\n";
-    }
-
-    // --- helpers modale locale (vous pouvez remplacer par import modal.js si dispo)
+    // ---- helpers modale locale (optionnels si tu as un module modal.js global) ----
     const modal     = document.getElementById('infoModal');
     const modalBody = document.getElementById('infoModalBody');
     const modalX    = document.getElementById('infoModalClose');
@@ -58,7 +58,7 @@ export function initRDV() {
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
     // --------------------------------------------------------------------
-    // BLOQUER LE PASSÉ À LA MINUTE PRÈS (simple, sans arrondir/modifier)
+    // BLOQUER LE PASSÉ À LA MINUTE PRÈS
     // --------------------------------------------------------------------
     const serverIso = (window.APP && window.APP.serverNow) ? String(window.APP.serverNow) : null;
 
@@ -111,6 +111,16 @@ export function initRDV() {
     elDate?.addEventListener('change', applyMinConstraints);
     elTime?.addEventListener('change', applyMinConstraints);
 
+    // ---- Helpers provenant d'agenda.js (avec fallback window.*) ----
+    function safeHasAny(){
+        try { return !!alreadyHasAnyForThisDossier(); }
+        catch { return typeof window.__agendaHasAnyForThisDossier === 'function' ? !!window.__agendaHasAnyForThisDossier() : false; }
+    }
+    function safeHasValidated(){
+        try { return !!alreadyHasValidatedForThisDossier(); }
+        catch { return typeof window.__agendaHasValidatedForThisDossier === 'function' ? !!window.__agendaHasValidatedForThisDossier() : false; }
+    }
+
     // --- Nouvel appel (ne crée pas de RDV)
     if (btnCall && form && actionType) {
         btnCall.addEventListener('click', (ev) => {
@@ -121,190 +131,172 @@ export function initRDV() {
         });
     }
 
-    // --- RDV temporaire
+    // --- RDV temporaire (upsert UNIQUE par dossier)
+    // ... dans initRDV(), handler du btnRdv ...
+
+    // --- RDV temporaire (upsert UNIQUE par dossier) + confirmations
     if (btnRdv) {
+        let rdvBusy = false;
+
+        async function postRdvTemp(purgeValidated) {
+            const url = `/interventions/${encodeURIComponent(numInt)}/rdv/temporaire`;
+            const res = await fetch(url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrf,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    rea_sal: elTech?.value || '',
+                    date_rdv: elDate?.value || '',
+                    heure_rdv: elTime?.value || '',
+                    code_postal: document.querySelector('input[name="code_postal"]')?.value || null,
+                    ville: document.querySelector('input[name="ville"]')?.value || null,
+                    commentaire: document.querySelector('#commentaire')?.value || '',
+                    purge_validated: !!purgeValidated
+                }),
+            });
+
+            // tente de parser le JSON même en erreur
+            let out = null;
+            const raw = await res.text();
+            try { out = JSON.parse(raw); } catch {}
+
+            return { res, out, raw };
+        }
+
         btnRdv.addEventListener('click', async (ev) => {
             withBtnLock(ev.currentTarget, async () => {
-                document.getElementById('actionType').value = 'rdv_temporaire';
-                const tech = elTech?.value || '';
-                const date = elDate?.value || '';
-                const time = elTime?.value || '';
-                if (!numInt || !tech || !date || !time) { alert('Sélectionne le technicien, la date et l’heure.'); return; }
-                if (guardPastOrAlert()) return;
+                if (rdvBusy) return;
+                rdvBusy = true;
+                try {
+                    // champs requis
+                    const tech = elTech?.value || '';
+                    const date = elDate?.value || '';
+                    const time = elTime?.value || '';
+                    if (!numInt || !tech || !date || !time) {
+                        alert('Sélectionne le technicien, la date et l’heure.');
+                        return;
+                    }
+                    if (guardPastOrAlert()) return;
 
-                const url = `/interventions/${encodeURIComponent(numInt)}/rdv/temporaire`;
-                const res = await fetch(url, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Accept':'application/json', 'Content-Type':'application/json', 'X-CSRF-TOKEN': csrf },
-                    body: JSON.stringify({
-                        rea_sal: tech, date_rdv: date, heure_rdv: time,
-                        code_postal: document.querySelector('input[name="code_postal"]')?.value || null,
-                        ville: document.querySelector('input[name="ville"]')?.value || null,
-                        commentaire: document.querySelector('#commentaire')?.value || ''
-                    }),
-                });
+                    // État courant (déduit de l’agenda déjà chargé)
+                    const hasAny = (function(){
+                        try { return !!alreadyHasAnyForThisDossier(); }
+                        catch { return typeof window.__agendaHasAnyForThisDossier === 'function' ? !!window.__agendaHasAnyForThisDossier() : false; }
+                    })();
+                    const hasValidated = (function(){
+                        try { return !!alreadyHasValidatedForThisDossier(); }
+                        catch { return typeof window.__agendaHasValidatedForThisDossier === 'function' ? !!window.__agendaHasValidatedForThisDossier() : false; }
+                    })();
 
-                const raw = await res.text();
-                let out = null; try { out = JSON.parse(raw); } catch {}
+                    // 1) Avertissements avant envoi
+                    let purgeValidated = false;
+                    if (hasValidated) {
+                        const ok = confirm(
+                            'Créer un RDV TEMPORAIRE va SUPPRIMER le RDV validé en place.\n\nContinuer ?'
+                        );
+                        if (!ok) return;
+                        purgeValidated = true;
+                    } else if (hasAny) {
+                        const ok = confirm(
+                            'Un RDV TEMPORAIRE existe déjà pour ce dossier.\nLe nouveau remplacera l’actuel (l’ancien passera en obsolète).\n\nContinuer ?'
+                        );
+                        if (!ok) return;
+                    }
 
-                if (!res.ok || !out || out.ok !== true) {
-                    const ct = res.headers.get('content-type') || '';
-                    const probable =
-                        res.status === 419 ? 'CSRF ou session expirée' :
-                            res.status === 401 ? 'Non authentifié' :
-                                res.status === 422 ? 'Erreurs de validation' :
-                                    res.status === 500 ? 'Erreur serveur (exception)' :
-                                        !ct.includes('application/json') ? 'Réponse non-JSON (souvent une page HTML de login)' : 'Inconnue';
-                    let details = '';
-                    if (out && out.type === 'QueryException') details = `\nSQLSTATE: ${out.sqlstate}\nErrno: ${out.errno}\nMessage: ${out.errmsg}\n@ ${out.file}`;
-                    else if (out && out.errmsg) details = `\nMessage: ${out.errmsg}\n@ ${out.file || ''}`;
-                    alert(['❌ Création RDV temporaire échouée', `HTTP: ${res.status}`, `Cause probable: ${probable}`, details || (ct.includes('application/json') ? '' : `\nHTML/Corps:\n${raw.slice(0,400)}`)].filter(Boolean).join('\n'));
-                    return;
+                    // 2) Premier POST
+                    let { res, out, raw } = await postRdvTemp(purgeValidated);
+
+                    // 3) Gestion “409 VALIDATED_EXISTS” (handshake backend)
+                    if (res.status === 409 && out && out.code === 'VALIDATED_EXISTS') {
+                        const ok = confirm(
+                            'Un RDV VALIDÉ est actif.\nCréer un RDV TEMPORAIRE va le SUPPRIMER.\n\nConfirmer la suppression du validé et poursuivre ?'
+                        );
+                        if (!ok) return;
+
+                        ({ res, out, raw } = await postRdvTemp(true));
+                    }
+
+                    // 4) Gestion erreurs
+                    if (!res.ok || !out || out.ok !== true) {
+                        const probable =
+                            res.status === 419 ? 'CSRF ou session expirée' :
+                                res.status === 401 ? 'Non authentifié' :
+                                    res.status === 422 ? 'Erreurs de validation' :
+                                        res.status === 429 ? 'Trop de requêtes (throttle)' :
+                                            res.status === 500 ? 'Erreur serveur (exception)' :
+                                                'Inconnue';
+                        const details = out && (out.errmsg || out.message) ? `\n${out.errmsg || out.message}` : '';
+                        alert([
+                            '❌ Création/MàJ RDV temporaire échouée',
+                            `HTTP: ${res.status}`,
+                            `Cause probable: ${probable}`,
+                            details || (raw ? `\n${raw.slice(0, 300)}` : '')
+                        ].filter(Boolean).join('\n'));
+                        return;
+                    }
+
+                    // 5) Succès → rafraîchir agenda si nécessaire
+                    const techNorm = (elTech?.value || '').toUpperCase().trim();
+                    if (!isInAgendaList(techNorm)) {
+                        window.location.reload();
+                        return;
+                    }
+                    document.getElementById('selModeTech')?.dispatchEvent(new Event('change'));
+                    const c = document.querySelector('#commentaire'); if (c) c.value = '';
+                    alert(out.mode === 'updated' ? 'RDV temporaire mis à jour.' : 'RDV temporaire créé.');
+                } finally {
+                    rdvBusy = false;
                 }
-
-                const techNorm = (elTech?.value || '').toUpperCase().trim();
-                if (!isInAgendaList(techNorm)) {
-                    // rechargement complet pour reconstruire agendaPeople côté serveur
-                    window.location.reload(); // équivalent F5
-                    return;
-                }
-
-// sinon, refresh léger de l'agenda existant
-                document.getElementById('selModeTech')?.dispatchEvent(new Event('change'));
-                const c = document.querySelector('#commentaire'); if (c) c.value = '';
-                alert(out.mode === 'updated' ? 'RDV temporaire mis à jour.' : 'RDV temporaire créé.');
             });
         });
     }
 
-    // --- Valider RDV (modal combinée : temporaires + avertissement d’écrasement si RDV validé existe)
+
+
+    // --- Valider RDV (écrasement éventuel de l’unique RDV du dossier)
     if (btnVal && form) {
         btnVal.addEventListener('click', (ev) => {
-            withBtnLock(ev.currentTarget, async () => {
+            withBtnLock(ev.currentTarget, () => {
                 document.getElementById('actionType').value = 'rdv_valide';
 
-                const tech  = elTech?.value || '';
                 const date  = elDate?.value || '';
                 const heure = elTime?.value || '';
-
                 if (date && heure && isPastSelection(date, heure)) {
                     alert('Impossible de valider un rendez-vous dans le passé.');
                     return;
                 }
 
-                if (!numInt || !tech || !date || !heure) {
-                    // confirmation simple si RDV validé déjà existant
-                    if (hasExistingValidated()) {
-                        const ok = confirm(overwriteWarnText() + "\nConfirmer la validation ?");
-                        if (!ok) return;
-                    }
-                    form.requestSubmit();
-                    return;
+                const hasAny       = safeHasAny();       // temp OU validé
+                const hasValidated = safeHasValidated(); // validé
+                const fromTempModal = isFromTempModalEvent(ev.currentTarget);
+
+                // Cas 1 : un RDV validé existe -> on prévient toujours
+                if (hasValidated) {
+                    const ok = confirm(
+                        "⚠️ Un RDV VALIDÉ existe déjà pour ce dossier.\n"
+                        + "Valider maintenant va ÉCRASER ce RDV validé (date, heure, technicien, etc.).\n\n"
+                        + "Confirmer la validation ?"
+                    );
+                    if (!ok) return;
+                }
+                    // Cas 2 : il existe un (ou des) RDV temporaire(s) actif(s)
+                    // - Si l’action vient de la MODALE du RDV temp -> pas d’alerte
+                // - Sinon -> on garde la sécurité
+                else if (hasAny && !fromTempModal) {
+                    const ok = confirm(
+                        "⚠️ Un RDV TEMPORAIRE existe déjà pour ce dossier.\n"
+                        + "Valider maintenant va le SUPPRIMER et le remplacer par un RDV validé.\n\n"
+                        + "Confirmer la validation ?"
+                    );
+                    if (!ok) return;
                 }
 
-                const urlCheck = `/interventions/${encodeURIComponent(numInt)}/rdv/temporaire/check`;
-                const urlPurge = `/interventions/${encodeURIComponent(numInt)}/rdv/temporaire/purge`;
-                const timeSeconds = (heure.length === 5 ? `${heure}:00` : heure);
-
-                try {
-                    const r1 = await fetch(urlCheck, {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: { 'Accept':'application/json', 'Content-Type':'application/json', 'X-CSRF-TOKEN': csrf },
-                        body: JSON.stringify({
-                            exclude: {
-                                codeTech: tech || null,
-                                startDate: date || null,
-                                startTime: timeSeconds  || null
-                            }
-                        })
-                    });
-                    const j1 = await r1.json().catch(() => ({ ok:false, count:0, items:[] }));
-                    const hasTemps = !!(j1 && j1.ok && (j1.count || 0) > 0);
-
-                    // ADD — si pas de temporaires mais un validé existe déjà → confirm unique
-                    if (!hasTemps) {
-                        if (hasExistingValidated()) {
-                            const ok = confirm(overwriteWarnText() + "\nConfirmer la validation ?");
-                            if (!ok) return;
-                        }
-                        form.requestSubmit();
-                        return;
-                    }
-
-                    // Il y a des temporaires → modale combinée
-                    const hadValidated = hasExistingValidated(); // ADD
-                    const listHtml = (j1.items || []).map(it => {
-                        const hhmm = (it.StartTime || '').slice(0,5);
-                        const dfr  = (it.StartDate || '').split('-').reverse().join('/');
-                        const t    = it.CodeTech || '';
-                        const lab  = (it.Label || '').replace(/[<>&"]/g, s => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[s]));
-                        return `<li><code>${dfr} ${hhmm}</code> · <strong>${t}</strong> — ${lab}</li>`;
-                    }).join('');
-
-                    // ADD — bloc d’avertissement “écrasement” fusionné dans la même modale
-                    const warnBlock = hadValidated
-                        ? `<p class="alert-warn" style="margin:8px 0;padding:8px;border:1px solid #e0a800;background:#fff3cd">
-                              ⚠️ Un RDV <strong>validé</strong> existe déjà pour ce dossier.<br>
-                              Valider maintenant va <strong>écraser</strong> l’existant.
-                           </p>`
-                        : '';
-
-                    const html = `
-                      <div>
-                        <h3 class="modal-title">Validation du rendez-vous</h3>
-                        ${warnBlock}
-                        <p>Des rendez-vous <em>temporaires</em> sont présents sur ce dossier&nbsp;:</p>
-                        <ul class="modal-list">${listHtml}</ul>
-                        <p>Que souhaitez-vous faire&nbsp;?</p>
-                        <div class="hstack-8 flex-wrap">
-                          <button id="optPurgeThenValidate" class="btn" type="button">Supprimer les temporaires puis valider</button>
-                          <button id="optValidateAnyway" class="btn" type="button">
-                            ${hadValidated ? 'Valider (écrasera l’existant)' : 'Valider sans supprimer'}
-                          </button>
-                          <button id="optCancel" class="btn" type="button">Annuler</button>
-                        </div>
-                      </div>`;
-                    openModal(html);
-
-                    modalBody.querySelector('#optPurgeThenValidate')?.addEventListener('click', (e) => {
-                        withBtnLock(e.currentTarget, async () => {
-                            try {
-                                const r2 = await fetch(urlPurge, {
-                                    method:'POST', credentials:'same-origin',
-                                    headers:{ 'Accept':'application/json','Content-Type':'application/json','X-CSRF-TOKEN': csrf },
-                                    body: JSON.stringify({})
-                                });
-                                const j2 = await r2.json().catch(()=>({ ok:false, deleted:0 }));
-                                if (!j2.ok) { alert('❌ Échec de la suppression des RDV temporaires.'); return; }
-                                document.getElementById('selModeTech')?.dispatchEvent(new Event('change'));
-                                closeModal();
-                                form.requestSubmit(); // pas de second confirm
-                            } catch (err) {
-                                console.error('[purge temporaires] erreur', err);
-                                alert('❌ Erreur lors de la suppression des RDV temporaires.');
-                            }
-                        });
-                    }, { once:true });
-
-                    modalBody.querySelector('#optValidateAnyway')?.addEventListener('click', (e) => {
-                        withBtnLock(e.currentTarget, () => { closeModal(); form.requestSubmit(); });
-                    }, { once:true });
-
-                    modalBody.querySelector('#optCancel')?.addEventListener('click', (e) => {
-                        withBtnLock(e.currentTarget, () => closeModal());
-                    }, { once:true });
-
-                } catch (err) {
-                    console.error('[Valider RDV] erreur', err);
-                    // dernier recours : simple confirm si RDV validé existant
-                    if (hasExistingValidated()) {
-                        const ok = confirm(overwriteWarnText() + "\nConfirmer la validation ?");
-                        if (!ok) return;
-                    }
-                    form.requestSubmit();
-                }
+                form.requestSubmit();
             });
         });
     }

@@ -67,10 +67,11 @@ class CheckSession
 
         session([
             'agences_autorisees' => (array)($data->agences_autorisees ?? []),
-            'codeAg' => (string)($data->CodeAgSal ?? ''),
-            'codeSal' => (string)($data->CodeSal ?? ($data->Util ?? '')),
-            'defaultAgence' => (string)($data->defaultAgence ?? ''),
+            'codeAg'             => (string)($data->CodeAgSal ?? ''),
+            'codeSal'            => (string)($data->CodeSal ?? ($data->Util ?? '')),
+            'defaultAgence'      => $data->defaultAgence ?? null, // 👈 pas de cast en string
         ]);
+
 
         return $next($request);
     }

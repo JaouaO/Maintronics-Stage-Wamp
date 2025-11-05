@@ -99,28 +99,32 @@
 
                 {{-- Agences --}}
                 @php
-                    $ags = array_values((array)($agencesAutorisees ?? []));
+                    $ags     = array_values((array)($agencesAutorisees ?? []));
                     $hasMany = count($ags) > 1;
-                    $agSelected = $ag ?? null; // null => toutes (si $hasMany)
-                    $lieu = $lieu ?? 'all';
+
+                    // on fait confiance au contrôleur : $ag == null => "Toutes"
+                    $agSelected = (is_string($ag ?? null) && in_array($ag, $ags, true)) ? $ag : null;
+
+                    // valeur à ré-injecter dans les liens (pagination, actualiser)
+                    $agOut = $agSelected ?? ($hasMany ? '_ALL' : ($ags[0] ?? null));
                 @endphp
 
                 <div class="b-agence">
-                    <label for="ag">Agence</label>
-                    <select id="ag" name="ag" {{ (!$hasMany && !empty($ags)) ? 'disabled' : '' }}>
-                        @if($hasMany)
-                            <option value="_ALL" {{ $agSelected === null ? 'selected' : '' }}>Toutes les agences
-                            </option>
-                        @endif
-                        @foreach($ags as $agc)
-                            <option value="{{ $agc }}" {{ $agSelected === $agc ? 'selected' : '' }}>{{ $agc }}</option>
-                        @endforeach
-                    </select>
-                    @if(!$hasMany && !empty($ags))
-                        {{-- Les champs disabled ne soumettent pas : on duplique la valeur en hidden --}}
-                        <input type="hidden" name="ag" value="{{ $ags[0] }}">
+                <label for="ag">Agence</label>
+                <select id="ag" name="ag" {{ (!$hasMany && !empty($ags)) ? 'disabled' : '' }}>
+                    @if($hasMany)
+                        <option value="_ALL" {{ is_null($agSelected) ? 'selected' : '' }}>Toutes les agences</option>
                     @endif
-                </div>
+                    @foreach($ags as $agc)
+                        <option value="{{ $agc }}" {{ $agSelected === $agc ? 'selected' : '' }}>{{ $agc }}</option>
+                    @endforeach
+                </select>
+
+                @if(!$hasMany && !empty($ags))
+                    {{-- Les champs disabled ne soumettent pas : on duplique la valeur en hidden --}}
+                    <input type="hidden" name="ag" value="{{ $ags[0] }}">
+            @endif
+        </div>
 
                 {{-- Lieu (Tous / Site / Laboratoire) --}}
                 <div class="b-lieu">
@@ -376,33 +380,25 @@
                     </table>
                 </div>
 
-                <div id="pager" class="pager">
-                    {{ $rows->onEachSide(1)->appends([
-    'per_page' => $perPage,
-    'q'        => $q,
+                    <div id="pager" class="pager">
+                        {{ $rows->onEachSide(1)->appends([
+    'per_page'=>$perPage,
+    'q'=>$q,
     'scope'    => $scope,
-    'ag'       => $ag ?? ($hasMany ? '_ALL' : ($ags[0] ?? null)),
+    'ag'       => $agOut,
     'lieu'     => $lieu,
-  ])->links('pagination.clean') }}
+    ])->links('pagination.clean') }}
+                    </div>
+                </div>
+            </div>
 
+            <div class="footer">
+                <div class="meta">Priorité serveur : (URGENT & VOUS) → URGENT → VOUS → Autre, puis date/heure.</div>
+                <div class="ft-actions">
+                    <a class="btn" href="{{ route('interventions.create') }}">➕ Nouvelle intervention</a>
+                    <a class="btn" href="{{ url()->previous() }}">Retour</a>
+                    <a class="btn" href="{{ route('interventions.show', ['per_page'=>$perPage, 'q'=>$q, 'scope'=>$scope, 'ag'=>$agOut, 'lieu'=>$lieu]) }}">Actualiser</a>
                 </div>
             </div>
         </div>
-
-        <div class="footer">
-            <div class="meta">Priorité serveur : (URGENT & VOUS) → URGENT → VOUS → Autre, puis date/heure.</div>
-            <div class="ft-actions">
-                <a class="btn" href="{{ route('interventions.create') }}">➕ Nouvelle intervention</a>
-                <a class="btn" href="{{ url()->previous() }}">Retour</a>
-                <a class="btn" href="{{ route('interventions.show', [
-    'per_page' => $perPage,
-    'q'        => $q,
-    'scope'    => $scope,
-    'ag'       => $ag ?? ($hasMany ? '_ALL' : ($ags[0] ?? null)),
-    'lieu'     => $lieu,
-]) }}">Actualiser</a>
-
-            </div>
-        </div>
-    </div>
 @endsection

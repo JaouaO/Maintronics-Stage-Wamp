@@ -17,7 +17,7 @@ class RdvTemporaireDTO
     public ?string $cp = null;
     public ?string $ville = null;
     public ?string $marque = null;
-
+    public bool    $purgeValidated = false;
     public function __construct(
         string  $numInt,
         string  $auteur,
@@ -28,7 +28,8 @@ class RdvTemporaireDTO
         string  $contactReel,
         ?string $cp,
         ?string $ville,
-        ?string $marque
+        ?string $marque,
+        bool $purgeValidated = false
     ) {
         $this->numInt      = $numInt;
         $this->auteur      = $auteur;
@@ -40,6 +41,7 @@ class RdvTemporaireDTO
         $this->cp          = $cp;
         $this->ville       = $ville;
         $this->marque      = $marque;
+        $this->purgeValidated = $purgeValidated;
     }
 
     public static function fromRequest(Request $request, string $numInt, string $codeSalAuteur): self
@@ -55,7 +57,9 @@ class RdvTemporaireDTO
             $request->input('code_postal'),
             $request->input('ville'),
             $request->input('marque'),
+            $request->boolean('purge_validated', false),
         );
+
     }
 
 }

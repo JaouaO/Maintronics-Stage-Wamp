@@ -8,7 +8,6 @@
     @include('interventions.partials.errors')
 
     <form id="interventionForm" method="POST"
-          onsubmit="return confirm('Confirmer la validation?');"
           action="{{ route('interventions.update', $interv->NumInt) }}">
         @csrf
         {{-- Champs cachés communs --}}

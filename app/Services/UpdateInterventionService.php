@@ -10,6 +10,7 @@ use App\Services\Write\PlanningWriteService;
 use App\Services\Utils\ParisClockService;
 use App\Services\Utils\VocabulaireService;
 use App\Services\Write\HistoryWriteService;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class UpdateInterventionService
@@ -47,46 +48,60 @@ class UpdateInterventionService
         $labelsA = $this->vocabService->labelsFromBits('AFFECTATION', $bitsAffectation, $vocab);
         $messageAffectation = $this->vocabService->textFromBits('AFFECTATION', $bitsAffectation, $vocab);
 
-
         $hasRdv = !empty($dto->date) && !empty($dto->heure);
 
+        // Garde-fou "pas dans le passé" pour un RDV fourni
+        if ($hasRdv) {
+            $rdvAt = $this->clock->parseLocal($dto->date, $dto->heure);
+            if ($rdvAt->isPast()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'rdv' => 'La date/heure choisie est dans le passé.'
+                ]);
+            }
+        }
+
         DB::transaction(function () use ($dto, $bitsTraitement, $bitsAffectation, $labelsT, $labelsA, $messageAffectation, $hasRdv) {
-            // 1) t_intervention (upsert)
+            // 1) t_intervention (upsert + sync champs simples)
             $fields = [];
             if ($dto->marque) $fields['Marque'] = $dto->marque;
             if ($dto->cp)     $fields['CPLivCli'] = $dto->cp;
             if ($dto->ville)  $fields['VilleLivCli'] = $dto->ville;
 
-            if ($dto->actionType == 'rdv_valide' && $hasRdv) {
+            if ($dto->actionType === 'rdv_valide' && $hasRdv) {
+                // heure RDV (évènement), pas l’heure de clic
                 $start = $this->clock->parseLocal($dto->date, $dto->heure);
 
+                // Champs "prévu" = le créneau validé
                 $fields['DateIntPrevu']  = $dto->date;
                 $fields['HeureIntPrevu'] = $dto->heure;
                 $fields['CodeTech']      = (string) $dto->reaSal;
+
+                // Champs "validé" = horodatage de la validation (maintient votre sémantique existante)
                 $fields['DateValid']     = $this->clock->now()->toDateString();
                 $fields['HeureValid']    = $this->clock->now()->format('H:i:s');
 
-                // 2) planning validé
+                // 2) Planning : retirer le temp (même slot), purger tout validé existant, puis insérer le validé
                 $planningDTO = new PlanningDTO();
-                $planningDTO->codeTech = (string) $dto->reaSal;
-                $planningDTO->start    = $start;
-                $planningDTO->end      = (clone $start)->addHour();
-                $planningDTO->numInt   = $dto->numInt;
-                $planningDTO->label    = trim($dto->numInt.' — '.mb_substr($dto->commentaire, 0, 60));
-                $planningDTO->commentaire = $dto->commentaire;
-                $planningDTO->cp       = $dto->cp;
-                $planningDTO->ville    = $dto->ville;
-                $planningDTO->validated = true;
+                $planningDTO->codeTech   = (string) $dto->reaSal;
+                $planningDTO->start      = $start;
+                $planningDTO->end        = (clone $start)->addHour();
+                $planningDTO->numInt     = $dto->numInt;
+                $planningDTO->label      = trim($dto->numInt.' — '.mb_substr($dto->commentaire, 0, 60));
+                $planningDTO->commentaire= $dto->commentaire;
+                $planningDTO->cp         = $dto->cp;
+                $planningDTO->ville      = $dto->ville;
+                $planningDTO->validated  = true;
 
                 $this->planningWriteService->deleteTempBySlot($dto->numInt, (string)$dto->reaSal, $start);
                 $this->planningWriteService->purgeValidatedByNumInt($dto->numInt);
-
                 $this->planningWriteService->insertValidated($planningDTO, $dto->urgent);
+                 // Nettoyage de sécurité : aucun temporaire résiduel après validation
+                 $this->planningWriteService->purgeTempsByNumInt($dto->numInt);
             }
 
             DB::table('t_intervention')->updateOrInsert(['NumInt' => $dto->numInt], $fields);
 
-            // 3) historique
+            // 3) Historique (évènement)
             $meta = [
                 'd'   => $dto->date ?: null,
                 'h'   => $dto->heure ?: null,
@@ -107,13 +122,13 @@ class UpdateInterventionService
             } elseif ($dto->actionType === 'rdv_valide' && $hasRdv) {
                 $evtType = 'RDV_FIXED';
                 $evtMeta = $this->vocabService->pruneNulls($meta);
-            }else{
+            } else {
                 throw new \InvalidArgumentException('action_type invalide ou RDV incomplet.');
             }
 
             $this->historyWriteService->log($dto->numInt, $evtType, $evtMeta, $dto->objetTrait, $dto->commentaire, $dto->auteur);
 
-            // 4) snapshot t_actions_etat
+            // 4) Snapshot t_actions_etat
             $etat = [
                 'bits_traitement'  => $bitsTraitement,
                 'bits_affectation' => $bitsAffectation,
@@ -122,19 +137,20 @@ class UpdateInterventionService
                 'urgent'           => $dto->urgent ? 1 : 0,
                 'commentaire'      => $dto->commentaire,
             ];
+
             if ($hasRdv && $dto->reaSal) {
                 $start = $this->clock->parseLocal($dto->date, $dto->heure);
 
-                if($dto->actionType ==='appel'){
+                if ($dto->actionType === 'appel') {
+                    // planifié (prévu non validé)
                     $etat['reaffecte_code'] = $dto->reaSal;
                     $etat['rdv_prev_at']    = $start;
-
-                }elseif ($dto->actionType ==='rdv_valide'){
+                } elseif ($dto->actionType === 'rdv_valide') {
+                    // validé
                     $etat['tech_code']      = $dto->reaSal;
                     $etat['tech_rdv_at']    = $start;
                     $etat['reaffecte_code'] = null;
                     $etat['rdv_prev_at']    = null;
-
                 }
             }
 
@@ -142,40 +158,87 @@ class UpdateInterventionService
         });
     }
 
+
+    // UpdateInterventionService::ajoutRdvTemporaire()
     public function ajoutRdvTemporaire(RdvTemporaireDTO $dto)
     {
+        // Garde-fou : pas dans le passé
+        $start = $this->clock->parseLocal($dto->date, $dto->heure);
+        if ($start->isPast()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'rdv' => 'La date/heure choisie est dans le passé.'
+            ]);
+        }
 
-        return DB::transaction(function () use ($dto) {
-            $start = $this->clock->parseLocal($dto->date, $dto->heure);
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($dto, $start) {
+            // Y a-t-il déjà un RDV VALIDÉ actif pour ce dossier ?
+            $hasValidated = \Illuminate\Support\Facades\DB::table('t_planning_technicien')
+                ->where('NumIntRef', $dto->numInt)
+                ->where('isObsolete', 0)
+                ->where('IsValidated', 1)
+                ->exists();
 
-            $planningDTO = new PlanningDTO();
-            $planningDTO->codeTech = (string) $dto->reaSal;
-            $planningDTO->start    = $start;
-            $planningDTO->end      = (clone $start)->addHour();
-            $planningDTO->numInt   = $dto->numInt;
-            $planningDTO->label    = trim($dto->numInt.' — '.mb_substr($dto->commentaire, 0, 60));
+            // Si un validé existe et que l'UI n'a pas demandé explicitement la purge → on déclenche un 409 côté contrôleur
+            if ($hasValidated && !$dto->purgeValidated) {
+                throw new \RuntimeException('VALIDATED_EXISTS');
+            }
+
+            // Si la purge est confirmée, on rend obsolètes tous les VALIDÉS actifs du dossier
+            if ($hasValidated && $dto->purgeValidated) {
+                $this->planningWriteService->purgeValidatedByNumInt($dto->numInt);
+            }
+
+            // Upsert du RDV TEMPORAIRE
+            $planningDTO = new \App\Services\DTO\PlanningDTO();
+            $planningDTO->codeTech    = (string) $dto->reaSal;
+            $planningDTO->start       = $start;
+            $planningDTO->end         = (clone $start)->addHour();
+            $planningDTO->numInt      = $dto->numInt;
+            $planningDTO->label       = trim($dto->numInt.' — '.mb_substr($dto->commentaire, 0, 60));
             $planningDTO->commentaire = $dto->commentaire;
-            $planningDTO->cp       = $dto->cp;
-            $planningDTO->ville    = $dto->ville;
-            $planningDTO->validated = false;
+            $planningDTO->cp          = $dto->cp;
+            $planningDTO->ville       = $dto->ville;
+            $planningDTO->validated   = false;
 
             $mode = $this->planningWriteService->upsertTemp($planningDTO);
-            $evtType =  $mode === 'updated' ? 'RDV_TEMP_UPDATED' : 'RDV_TEMP_INSERTED';
+
+            // Sync minimal de t_intervention (créneau prévu + préaffectation)
+            \Illuminate\Support\Facades\DB::table('t_intervention')->updateOrInsert(
+                ['NumInt' => $dto->numInt],
+                [
+                    'DateIntPrevu'  => $start->toDateString(),
+                    'HeureIntPrevu' => $start->format('H:i:s'),
+                    'CodeTech'      => (string) $dto->reaSal,
+                ]
+            );
+
+            // Journalisation
+            $evtType = ($mode === 'updated') ? 'RDV_TEMP_UPDATED' : 'RDV_TEMP_INSERTED';
             $evtMeta = $this->vocabService->pruneNulls([
-                'd' => $start->toDateString(),
-                'h' => $start->format('H:i'),
-                't' => $dto->reaSal,
-                'lab' => mb_substr($dto->commentaire, 0, 60) ?: null,
+                'd'                 => $start->toDateString(),
+                'h'                 => $start->format('H:i'),
+                't'                 => $dto->reaSal,
+                'lab'               => mb_substr($dto->commentaire, 0, 60) ?: null,
+                'purged_validated'  => $dto->purgeValidated ? 1 : null,
             ]);
 
-            $this->historyWriteService->log($dto->numInt, $evtType, $evtMeta,'Planification', $dto->commentaire, $dto->auteur);
+            $this->historyWriteService->log(
+                $dto->numInt,
+                $evtType,
+                $evtMeta,
+                'Planification',
+                $dto->commentaire,
+                $dto->auteur
+            );
 
             return $mode;
-
         });
-
-
     }
+
+
+
+
+
     public function createMinimal(
         string $numInt,
         ?string $marque,

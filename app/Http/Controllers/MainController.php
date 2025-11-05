@@ -102,46 +102,51 @@ class MainController extends Controller
         $perPage = (int)($v['per_page'] ?? 10);
         $q       = $v['q'] ?? null;
         $scope   = $v['scope'] ?? null;
-        $lieu    = $v['lieu'] ?? 'all'; // NEW: all|site|labo
+        $lieu    = $v['lieu'] ?? 'all';
 
         $agencesAutorisees = array_values((array) session('agences_autorisees', []));
         $codeSal           = (string) session('codeSal', '');
-        $defaultAgence     = (string) session('defaultAgence', '');
+        $defaultAgence = (string) session('defaultAgence', ''); // pas de fallback -> sinon "Toutes"
 
-        $agParam = (string) $request->query('ag', '');
-        $hasMany = count($agencesAutorisees) > 1;
+        $hasMany  = count($agencesAutorisees) > 1;
+        $agParam  = $request->query('ag'); // null si absent (on ne force pas '')
+
+        // 👉 Règle de forçage : s'il y a plusieurs agences, aucune agence par défaut,
+        //    et aucun paramètre ?ag= fourni, alors on force "Toutes" (i.e. selected=null)
+        $forceAllAgences = $hasMany
+            && (empty($defaultAgence) || !in_array($defaultAgence, $agencesAutorisees, true))
+            && ($agParam === null || $agParam === '');
 
         // Résolution agence active
         $selectedAg = null;
-        if ($agParam && in_array($agParam, $agencesAutorisees, true)) {
+        if (is_string($agParam) && $agParam !== '' && in_array($agParam, $agencesAutorisees, true)) {
             $selectedAg = $agParam;
-        } elseif ($agParam === '_ALL' && $hasMany) {
-            $selectedAg = null;
+        } elseif ($agParam === '_ALL' || $forceAllAgences) {
+            $selectedAg = null; // "Toutes"
         } else {
             if ($defaultAgence && in_array($defaultAgence, $agencesAutorisees, true)) {
                 $selectedAg = $defaultAgence;
             } elseif (!$hasMany && !empty($agencesAutorisees)) {
                 $selectedAg = $agencesAutorisees[0];
             } else {
-                $selectedAg = null;
+                $selectedAg = null; // fallback "Toutes"
             }
         }
 
         $rows = $this->interventionService
-            ->listPaginatedSimple($perPage, $agencesAutorisees, $codeSal, $q, $scope, $selectedAg, $lieu); // ⬅ NEW param
+            ->listPaginatedSimple($perPage, $agencesAutorisees, $codeSal, $q, $scope, $selectedAg, $lieu);
 
         return view('interventions.show', [
-            'rows'              => $rows,
-            'perPage'           => $perPage,
-            'q'                 => $q,
-            'scope'             => $scope,
-            'agencesAutorisees' => $agencesAutorisees,
-            'ag'                => $selectedAg,
-            'defaultAgence'     => $defaultAgence,
-            'lieu'              => $lieu,  // ⬅ NEW pour la vue
+            'rows'               => $rows,
+            'perPage'            => $perPage,
+            'q'                  => $q,
+            'scope'              => $scope,
+            'agencesAutorisees'  => $agencesAutorisees,
+            'ag'                 => $selectedAg,     // <- null = "Toutes"
+            'forceAllAgences'    => $forceAllAgences, // <- pour info (pas indispensable)
+            'lieu'               => $lieu,
         ]);
     }
-
 
 
 
@@ -208,7 +213,7 @@ class MainController extends Controller
                 $allowed = $this->accessInterventionService
                     ->listAgendaPeopleForNumInt($numInt)
                     ->pluck('CodeSal')
-                    ->map(fn($c) => strtoupper(trim((string)$c))) // normalisation
+                    ->map(fn($c) => strtoupper(trim((string)$c)))
                     ->unique()
                     ->values()
                     ->all();
@@ -233,10 +238,11 @@ class MainController extends Controller
 
 
 
+    // === Validation / mise à jour "globale" depuis le formulaire ===
+//   - $dto embarque actionType ('rdv_valide', etc.), date/heure, code technicien, urgent, commentaire…
+//   - la logique d'unicité/écrasement/purge est déléguée au service.
     public function updateIntervention(UpdateInterventionRequest $request, $numInt): \Illuminate\Http\RedirectResponse
     {
-
-        Log::debug('urgent?', ['raw' => $request->input('urgent'), 'bool' => $request->boolean('urgent')]);
         $dto = UpdateInterventionDTO::fromRequest($request, (string)$numInt);
 
         try {
@@ -250,77 +256,55 @@ class MainController extends Controller
         }
     }
 
+
+// MainController::rdvTemporaire()
     public function rdvTemporaire(Request $request, string $numInt): \Illuminate\Http\JsonResponse
     {
-
         try {
-            $codeSalAuteur = session('codeSal') ?: null;
-            $dto = RdvTemporaireDTO::fromRequest($request, $numInt, $codeSalAuteur);
+            $codeSalAuteur = (string) (session('codeSal') ?: 'system');
+            $dto = \App\Services\DTO\RdvTemporaireDTO::fromRequest($request, $numInt, $codeSalAuteur);
 
             $mode = $this->updateInterventionService->ajoutRdvTemporaire($dto);
 
             return response()->json(['ok' => true, 'mode' => $mode]);
 
+        } catch (\RuntimeException $re) {
+            // Signal serveur pour "un RDV validé actif existe" → on renvoie 409 pour déclencher la confirmation UI
+            if ($re->getMessage() === 'VALIDATED_EXISTS') {
+                return response()->json([
+                    'ok'   => false,
+                    'code' => 'VALIDATED_EXISTS',
+                    'msg'  => 'Un RDV validé actif existe déjà pour ce dossier. Confirmez la suppression pour poursuivre.'
+                ], 409);
+            }
+            throw $re;
+
         } catch (\Illuminate\Database\QueryException $qe) {
             $ei = $qe->errorInfo ?? [];
             return response()->json([
-                'ok' => false,
-                'type' => 'QueryException',
+                'ok'       => false,
+                'type'     => 'QueryException',
                 'sqlstate' => $ei[0] ?? null,
-                'errno' => $ei[1] ?? null,
-                'errmsg' => $ei[2] ?? $qe->getMessage(),
-                'file' => basename($qe->getFile()) . ':' . $qe->getLine(),
+                'errno'    => $ei[1] ?? null,
+                'errmsg'   => $ei[2] ?? $qe->getMessage(),
+                'file'     => basename($qe->getFile()) . ':' . $qe->getLine(),
             ], 500);
+
         } catch (\Illuminate\Validation\ValidationException $ve) {
             return response()->json(['ok' => false, 'errors' => $ve->errors()], 422);
+
         } catch (\Throwable $e) {
             return response()->json([
-                'ok' => false,
-                'type' => 'Throwable',
-                'errmsg' => $e->getMessage(),
-                'file' => basename($e->getFile()) . ':' . $e->getLine(),
+                'ok'    => false,
+                'type'  => 'Throwable',
+                'errmsg'=> $e->getMessage(),
+                'file'  => basename($e->getFile()) . ':' . $e->getLine(),
             ], 500);
         }
     }
 
 
-    public function rdvTempCheck(Request $request, string $numInt): \Illuminate\Http\JsonResponse
-    {
-        try {
-            $exclude = $request->input('exclude');
-            $rows = $this->planningService->listTempsByNumInt($numInt);
-
-            if (is_array($exclude)
-                && !empty($exclude['codeTech'])
-                && !empty($exclude['startDate'])
-                && !empty($exclude['startTime'])) {
-
-                $rows = $rows->reject(function ($r) use ($exclude) {
-                    return ($r->CodeTech === $exclude['codeTech'])
-                        && ($r->StartDate === $exclude['startDate'])
-                        && ($r->StartTime === $exclude['startTime']);
-                });
-            }
-            return response()->json([
-                'ok' => true,
-                'count' => $rows->count(),
-                'items' => $rows,
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'msg' => $e->getMessage()], 500);
-        }
-    }
-
-    public function rdvTempPurge(Request $request, string $numInt): \Illuminate\Http\JsonResponse
-    {
-        try {
-            $deleted = $this->planningWriteService->purgeTempsByNumInt($numInt);
-            return response()->json(['ok' => true, 'deleted' => $deleted]);
-        } catch (\Throwable $e) {
-            return response()->json(['ok' => false, 'msg' => $e->getMessage()], 500);
-        }
-    }
-
+    // === RDV temporaire: suppression ciblée par id ===
     public function rdvTempDelete(Request $request, string $numInt, int $id): \Illuminate\Http\JsonResponse
     {
         try {
@@ -338,6 +322,7 @@ class MainController extends Controller
             return response()->json(['ok' => false, 'msg' => $e->getMessage()], 500);
         }
     }
+
 // MainController.php (ajoute/replace seulement ces 2 méthodes)
 
     public function createIntervention(Request $request)
