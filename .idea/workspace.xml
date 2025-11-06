@@ -5,15 +5,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="4502a622-9abf-4b1f-b0c7-c929a0e85e30" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/app/Services/TourPrep/AutoplanService.php" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/Http/Controllers/TourPrepController.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Http/Controllers/TourPrepController.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/Services/TourPrep/DistanceServiceFast.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Services/TourPrep/DistanceServiceFast.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/css/tourprep.css" beforeDir="false" afterPath="$PROJECT_DIR$/public/css/tourprep.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/js/tourprep.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/tourprep.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/resources/views/TourPrep/index.blade.php" beforeDir="false" afterPath="$PROJECT_DIR$/resources/views/TourPrep/index.blade.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/routes/web.php" beforeDir="false" afterPath="$PROJECT_DIR$/routes/web.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/storage/logs/laravel.log" beforeDir="false" afterPath="$PROJECT_DIR$/storage/logs/laravel.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/Services/PlanningService.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Services/PlanningService.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/js/interventions_edit/agenda.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions_edit/agenda.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/views/interventions/partials/agenda.blade.php" beforeDir="false" afterPath="$PROJECT_DIR$/resources/views/interventions/partials/agenda.blade.php" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

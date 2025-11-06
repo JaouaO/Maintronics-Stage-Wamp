@@ -73,7 +73,7 @@
                         <tr>
                             <th class="w-80">Heure</th>
                             <th class="w-80">Tech</th>
-                            <th class="w-200">Contact</th>
+                            <th class="w-200">Client</th>
                             <th>Label</th>
                             <th class="col-icon"></th>
                         </tr>

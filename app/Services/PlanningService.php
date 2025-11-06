@@ -47,7 +47,8 @@ class PlanningService
                 'p.StartDate','p.StartTime','p.EndDate','p.EndTime',
                 'p.NumIntRef','p.Label','p.IsValidated','p.Commentaire',
                 'p.CPLivCli','p.VilleLivCli','p.IsUrgent',
-                'i.Marque','e.contact_reel as Contact'
+                'i.Marque','e.contact_reel as Contact','i.NomLivCli as NomLivCli'
+
             )
             ->leftJoin('t_actions_etat as e', 'e.NumInt', '=', 'p.NumIntRef')
             ->leftJoin('t_intervention as i', 'i.NumInt', '=', 'p.NumIntRef')
@@ -86,6 +87,9 @@ class PlanningService
         foreach ($rows as $r) {
             $startIso = $r->StartDate.'T'.($r->StartTime ?: '00:00:00');
             $endIso   = !empty($r->EndDate) ? ($r->EndDate.'T'.($r->EndTime ?: '00:00:00')) : null;
+            $clientName  = trim((string)($r->NomLivCli ?? ''));
+            $contactName = trim((string)($r->Contact   ?? ''));
+            $client = $clientName !== '' ? $clientName : ($contactName !== '' ? $contactName : null);
 
             $events[] = [
                 'id' => $r->rid,
@@ -95,6 +99,7 @@ class PlanningService
                 'label'          => $r->Label,
                 'num_int'        => $r->NumIntRef,
                 'contact'        => $r->Contact ?: null,
+                'client'         => $client,
                 'is_validated'   => isset($r->IsValidated) ? ((int)$r->IsValidated === 1) : null,
                 'commentaire'    => $r->Commentaire ?: null,
                 'cp'             => $r->CPLivCli ?: null,
