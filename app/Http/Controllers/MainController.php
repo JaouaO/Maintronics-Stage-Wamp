@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+
 use App\Http\Requests\NotBlankRequest;
 use App\Http\Requests\RdvTemporaireRequest;
+use App\Http\Requests\ReplanifierRequest;
 use App\Http\Requests\ShowInterventionsRequest;
 use App\Http\Requests\StoreInterventionRequest;
 use App\Http\Requests\SuggestNumIntRequest;
@@ -38,15 +40,15 @@ class MainController extends Controller
     private ParisClockService $clockService;
 
     public function __construct(
-        AuthService               $authService,
-        InterventionService       $interventionService,
-        TraitementDossierService  $traitementDossierService,
-        PlanningService           $planningService,
-        PlanningWriteService      $planningWriteService,
-        UpdateInterventionService $updateInterventionService,
-        AccessInterventionService $accessInterventionService,
+        AuthService                $authService,
+        InterventionService        $interventionService,
+        TraitementDossierService   $traitementDossierService,
+        PlanningService            $planningService,
+        PlanningWriteService       $planningWriteService,
+        UpdateInterventionService  $updateInterventionService,
+        AccessInterventionService  $accessInterventionService,
         InterventionHistoryService $historyService,
-        ParisClockService $clockService
+        ParisClockService          $clockService
     )
     {
         $this->authService = $authService;
@@ -63,7 +65,8 @@ class MainController extends Controller
     public function showLoginForm()
     {
         if (session()->has('id')) {
-            return redirect()->route('interventions.show', ['id' => session('id')]);        }
+            return redirect()->route('interventions.show', ['id' => session('id')]);
+        }
         return view('login');
     }
 
@@ -71,7 +74,6 @@ class MainController extends Controller
     {
         $codeSal = $request->input('codeSal');
         $login = $this->authService->login($codeSal);
-
 
 
         if (!$login['success']) {
@@ -99,18 +101,18 @@ class MainController extends Controller
 
     public function showInterventions(ShowInterventionsRequest $request)
     {
-        $v       = $request->validated();
+        $v = $request->validated();
         $perPage = (int)($v['per_page'] ?? 10);
-        $q       = $v['q'] ?? null;
-        $scope   = $v['scope'] ?? null;
-        $lieu    = $v['lieu'] ?? 'all';
+        $q = $v['q'] ?? null;
+        $scope = $v['scope'] ?? null;
+        $lieu = $v['lieu'] ?? 'all';
 
-        $agencesAutorisees = array_values((array) session('agences_autorisees', []));
-        $codeSal           = (string) session('codeSal', '');
-        $defaultAgence = (string) session('defaultAgence', ''); // pas de fallback -> sinon "Toutes"
+        $agencesAutorisees = array_values((array)session('agences_autorisees', []));
+        $codeSal = (string)session('codeSal', '');
+        $defaultAgence = (string)session('defaultAgence', ''); // pas de fallback -> sinon "Toutes"
 
-        $hasMany  = count($agencesAutorisees) > 1;
-        $agParam  = $request->query('ag'); // null si absent (on ne force pas '')
+        $hasMany = count($agencesAutorisees) > 1;
+        $agParam = $request->query('ag'); // null si absent (on ne force pas '')
 
         // 👉 Règle de forçage : s'il y a plusieurs agences, aucune agence par défaut,
         //    et aucun paramètre ?ag= fourni, alors on force "Toutes" (i.e. selected=null)
@@ -138,25 +140,24 @@ class MainController extends Controller
             ->listPaginatedSimple($perPage, $agencesAutorisees, $codeSal, $q, $scope, $selectedAg, $lieu);
 
         return view('interventions.show', [
-            'rows'               => $rows,
-            'perPage'            => $perPage,
-            'q'                  => $q,
-            'scope'              => $scope,
-            'agencesAutorisees'  => $agencesAutorisees,
-            'ag'                 => $selectedAg,     // <- null = "Toutes"
-            'forceAllAgences'    => $forceAllAgences, // <- pour info (pas indispensable)
-            'lieu'               => $lieu,
+            'rows' => $rows,
+            'perPage' => $perPage,
+            'q' => $q,
+            'scope' => $scope,
+            'agencesAutorisees' => $agencesAutorisees,
+            'ag' => $selectedAg,     // <- null = "Toutes"
+            'forceAllAgences' => $forceAllAgences, // <- pour info (pas indispensable)
+            'lieu' => $lieu,
         ]);
     }
-
 
 
     // GET /interventions/{numInt}/history
     public function history(Request $request, string $numInt): \Illuminate\Http\Response
     {
         // Garde d’accès par agence (préfixe du NumInt)
-        $agencesAutorisees = array_map('strtoupper', (array) $request->session()->get('agences_autorisees', []));
-        $agFromNum         = $this->accessInterventionService->agenceFromNumInt($numInt);
+        $agencesAutorisees = array_map('strtoupper', (array)$request->session()->get('agences_autorisees', []));
+        $agFromNum = $this->accessInterventionService->agenceFromNumInt($numInt);
 
         if ($agFromNum === '' || !in_array($agFromNum, $agencesAutorisees, true)) {
             abort(403, 'Vous n’avez pas accès à cette intervention.');
@@ -178,7 +179,6 @@ class MainController extends Controller
     }
 
 
-
     public function editIntervention($numInt)
     {
         $payload = $this->traitementDossierService->loadEditPayload($numInt);
@@ -187,7 +187,6 @@ class MainController extends Controller
                 ->route('interventions.show', ['id' => session('id')])
                 ->with('error', 'Intervention introuvable.');
         }
-
 
 
         // ↓ Liste unifiée des personnes sélectionnables pour ce dossier
@@ -207,7 +206,7 @@ class MainController extends Controller
     public function apiPlanningTech(Request $request, $codeTech): \Illuminate\Http\JsonResponse
     {
         try {
-            $numInt = (string) $request->query('numInt', '');
+            $numInt = (string)$request->query('numInt', '');
             $allowed = [];
 
             if ($numInt !== '') {
@@ -262,7 +261,7 @@ class MainController extends Controller
     public function rdvTemporaire(RdvTemporaireRequest $request, string $numInt): \Illuminate\Http\JsonResponse
     {
         try {
-            $codeSalAuteur = (string) (session('codeSal') ?: 'system');
+            $codeSalAuteur = (string)(session('codeSal') ?: 'system');
             $dto = \App\Services\DTO\RdvTemporaireDTO::fromValidated($request->validated(), $numInt, $codeSalAuteur);
 
             $mode = $this->updateInterventionService->ajoutRdvTemporaire($dto);
@@ -272,9 +271,9 @@ class MainController extends Controller
         } catch (\RuntimeException $re) {
             if ($re->getMessage() === 'VALIDATED_EXISTS') {
                 return response()->json([
-                    'ok'   => false,
+                    'ok' => false,
                     'code' => 'VALIDATED_EXISTS',
-                    'msg'  => 'Un RDV validé actif existe déjà pour ce dossier. Confirmez la suppression pour poursuivre.'
+                    'msg' => 'Un RDV validé actif existe déjà pour ce dossier. Confirmez la suppression pour poursuivre.'
                 ], 409);
             }
             throw $re;
@@ -284,10 +283,10 @@ class MainController extends Controller
 
         } catch (\Throwable $e) {
             return response()->json([
-                'ok'    => false,
-                'type'  => 'Throwable',
-                'errmsg'=> $e->getMessage(),
-                'file'  => basename($e->getFile()) . ':' . $e->getLine(),
+                'ok' => false,
+                'type' => 'Throwable',
+                'errmsg' => $e->getMessage(),
+                'file' => basename($e->getFile()) . ':' . $e->getLine(),
             ], 500);
         }
     }
@@ -316,46 +315,47 @@ class MainController extends Controller
 
     public function createIntervention(Request $request)
     {
-        $agencesAutorisees = (array) $request->session()->get('agences_autorisees', []);
-        $defaultAgence     = (string) $request->session()->get('defaultAgence', '');
+        $agencesAutorisees = (array)$request->session()->get('agences_autorisees', []);
+        $defaultAgence = (string)$request->session()->get('defaultAgence', '');
 
         if (empty($agencesAutorisees)) {
             return redirect()->route('interventions.show')
                 ->with('error', 'Aucune agence autorisée pour ce compte.');
         }
 
-        $now    = $this->clockService->now(); // ← au lieu de Carbon::now()
-        $agence = (string) (
+        $now = $this->clockService->now(); // ← au lieu de Carbon::now()
+        $agence = (string)(
         $request->query('agence')
             ?: ($defaultAgence !== '' ? $defaultAgence : (reset($agencesAutorisees) ?: ''))
-        );        try {
+        );
+        try {
             $suggest = $this->interventionService->nextNumInt($agence, $now); // $now est un Carbon
         } catch (\Throwable $e) {
             $suggest = '';
         }
 
         return view('interventions.create', [
-            'agences'  => $agencesAutorisees,
-            'agence'   => $agence,
-            'suggest'  => $suggest,
+            'agences' => $agencesAutorisees,
+            'agence' => $agence,
+            'suggest' => $suggest,
             'defaults' => [
-                'DateIntPrevu'  => $now->toDateString(),
+                'DateIntPrevu' => $now->toDateString(),
                 'HeureIntPrevu' => $now->format('H:i'),
-                'VilleLivCli'   => '',
-                'CPLivCli'      => '',
-                'Marque'        => '',
-                'Commentaire'   => '',
-                'Urgent'        => false,
+                'VilleLivCli' => '',
+                'CPLivCli' => '',
+                'Marque' => '',
+                'Commentaire' => '',
+                'Urgent' => false,
             ],
-            'codeSal' => (string) $request->session()->get('codeSal', ''),
+            'codeSal' => (string)$request->session()->get('codeSal', ''),
         ]);
     }
 
     public function suggestNumInt(SuggestNumIntRequest $request)
     {
-        $ag    = strtoupper(trim($request->validated()['agence']));
-        $dateS = (string) $request->query('date', '');
-        $ref   = $dateS ? $this->clockService->parseLocal($dateS, '00:00')
+        $ag = strtoupper(trim($request->validated()['agence']));
+        $dateS = (string)$request->query('date', '');
+        $ref = $dateS ? $this->clockService->parseLocal($dateS, '00:00')
             : $this->clockService->now();
 
         try {
@@ -365,13 +365,13 @@ class MainController extends Controller
         } catch (\Throwable $e) {
             // 🔁 Fallback local : AGENCE-YYMM-##### (5 chiffres, reset chaque mois)
             $yymm = $ref->format('ym'); // ex: 2025-10 -> "2510"
-            $max  = DB::table('t_intervention')
-                ->where('NumInt', 'like', $ag.'-'.$yymm.'-%')
+            $max = DB::table('t_intervention')
+                ->where('NumInt', 'like', $ag . '-' . $yymm . '-%')
                 ->selectRaw("MAX(CAST(SUBSTRING_INDEX(NumInt, '-', -1) AS UNSIGNED)) as m")
                 ->value('m');
 
             $next = (int)$max + 1;
-            $num  = sprintf('%s-%s-%05d', $ag, $yymm, $next ?: 1);
+            $num = sprintf('%s-%s-%05d', $ag, $yymm, $next ?: 1);
             return response()->json(['ok' => true, 'numInt' => $num]);
         }
     }
@@ -391,19 +391,19 @@ class MainController extends Controller
             ? $p['NumInt']
             : $this->interventionService->nextNumInt($p['Agence'], $dateRef);
 
-        $codeSal = (string) $request->session()->get('codeSal', '');
+        $codeSal = (string)$request->session()->get('codeSal', '');
 
         // IMPORTANT : createMinimal doit écrire :
         // - t_intervention : NumInt, Marque, VilleLivCli, CPLivCli (uniquement colonnes existantes)
         // - t_actions_etat : urgent, rdv_prev_at (composé de DateIntPrevu+HeureIntPrevu), commentaire, reaffecte_code…
         $this->updateInterventionService->createMinimal(
             $numInt,
-            $p['Marque']        ?? null,
-            $p['VilleLivCli']   ?? null,
-            $p['CPLivCli']      ?? null,
-            $p['DateIntPrevu']  ?? null,
+            $p['Marque'] ?? null,
+            $p['VilleLivCli'] ?? null,
+            $p['CPLivCli'] ?? null,
+            $p['DateIntPrevu'] ?? null,
             $p['HeureIntPrevu'] ?? null,
-            $p['Commentaire']   ?? null,
+            $p['Commentaire'] ?? null,
             $codeSal ?: 'system',
             ((string)($p['Urgent'] ?? '0') === '1'),
             null
@@ -413,6 +413,42 @@ class MainController extends Controller
             ->route('interventions.edit', $numInt)
             ->with('ok', 'Intervention créée.');
     }
+
+// app/Http/Controllers/MainController.php (ajoutez en bas du contrôleur)
+    public function replanifierAjax(ReplanifierRequest $request, string $numInt): \Illuminate\Http\JsonResponse
+    {
+        // Garde d’accès par agence (même logique que history())
+        $agencesAutorisees = array_map('strtoupper', (array)request()->session()->get('agences_autorisees', []));
+        $agFromNum = $this->accessInterventionService->agenceFromNumInt($numInt);
+        if ($agFromNum === '' || !in_array($agFromNum, $agencesAutorisees, true)) {
+            return response()->json(['ok' => false, 'message' => 'Accès refusé à ce dossier.'], 403);
+        }
+
+        // Ne patcher que ce qui a été fourni
+        try {
+            $payload = $request->toUpdatePayload();
+            if (empty($payload)) {
+                return response()->json(['ok' => false, 'message' => 'Aucun champ à mettre à jour.'], 422);
+            }
+
+            $compat = new \Illuminate\Http\Request($payload);
+            $dto = \App\Services\DTO\UpdateInterventionDTO::fromRequest($compat, (string)$numInt);
+
+            DB::transaction(function () use ($dto) {
+                $this->updateInterventionService->updateAndPlanRdv($dto);
+            });
+
+            return response()->json(['ok' => true]);
+        } catch (ValidationException $ve) {
+            return response()->json(['ok' => false, 'errors' => $ve->errors()], 422);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['ok' => false, 'message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json(['ok' => false, 'message' => 'Erreur : ' . $e->getMessage()], 500);
+        }
+    }
+
 
 //return redirect('/ClientInfo?id=' . session('user')->idUser . '&action=dossier-detail&numInt=' . $numInt);
 }

@@ -190,7 +190,9 @@ COALESCE(
                     ->orWhere('ae.objet_traitement', 'like', $like)
                     ->orWhere('ti.VilleLivCli', 'like', $like)
                     ->orWhere('ti.CPLivCli', 'like', $like)
-                    ->orWhere('ti.NomLivCli', 'like', $like);
+                    ->orWhere('ti.NomLivCli', 'like', $like)
+                    ->orWhere('ae.reaffecte_code', 'like', $like)
+                    ->orWhere('ti.CodeTech', 'like', $like);
             });
         }
 

@@ -51,13 +51,14 @@ class TourPrepController extends Controller
                 'ti.CodeTech',
                 'ti.DateIntPrevu',
                 'ti.HeureIntPrevu',
-                'ti.AdLivCli',
-                'ti.CPLivCli',
-                'ti.VilleLivCli',
-                'ti.TypeApp',
-                'ti.Marque',
+                'ti.AdLivCli','ti.CPLivCli','ti.VilleLivCli','ti.TypeApp','ti.Marque',
                 DB::raw('COALESCE(tae.urgent, 0) as urgent'),
-                'tae.commentaire as commentaire'
+                'tae.commentaire as commentaire',
+                // ⬇️ drapeaux pour la vue
+                DB::raw("EXISTS(SELECT 1 FROM t_planning_technicien p
+                    WHERE p.NumIntRef=ti.NumInt AND p.isObsolete=0 AND p.IsValidated=1) as has_validated"),
+                DB::raw("EXISTS(SELECT 1 FROM t_planning_technicien p2
+                    WHERE p2.NumIntRef=ti.NumInt AND p2.isObsolete=0 AND (p2.IsValidated IS NULL OR p2.IsValidated=0)) as has_temp")
             )
             ->whereDate('ti.DateIntPrevu', $date)
             ->whereRaw('LEFT(ti.NumInt, 4) = ?', [$agRef])
@@ -89,12 +90,22 @@ class TourPrepController extends Controller
                 $opt
             );
 
+            $flagsByNum = collect($rdvs)->keyBy('NumInt')->map(function($r){
+                return ['has_validated'=>(int)$r->has_validated, 'has_temp'=>(int)$r->has_temp];
+            });
+
+            $stops = array_map(function($s) use ($flagsByNum){
+                $n = $s['numint'] ?? null;
+                if ($n && isset($flagsByNum[$n])) { return $s + $flagsByNum[$n]; }
+                return $s;
+            }, $data['stops']);
+
             $techTours[] = [
-                'tech'     => $tech,
-                'stops'    => $data['stops'],
-                'segments' => $data['segments'],
-                'total'    => $data['total'],
-                'geometry' => $data['geometry'],
+                'tech'=>$tech,
+                'stops'=>$stops,
+                'segments'=>$data['segments'],
+                'total'=>$data['total'],
+                'geometry'=>$data['geometry'],
             ];
         }
 

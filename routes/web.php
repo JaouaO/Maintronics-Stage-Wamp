@@ -83,6 +83,11 @@ Route::middleware(['check.session', 'security.headers'])->group(function () use 
         ->name('api.planning.tech')
         ->where('codeTech', $CODETECH_RE)
         ->middleware('throttle:160,1');
+
+    // routes/web.php
+    Route::post('/interventions/{numInt}/replanifier', [\App\Http\Controllers\MainController::class, 'replanifierAjax'])
+        ->name('tournee.replanifier');
+
 });
 
 // Fallback propre
