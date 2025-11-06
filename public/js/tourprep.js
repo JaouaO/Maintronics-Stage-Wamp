@@ -1,10 +1,15 @@
 "use strict";
 
-// Récup données bootstrap (définies par la vue)
+/* =========================
+   Bootstrap & const
+   ========================= */
 const agencyStart = (window.TP && window.TP.start) || null;
 const technicianTours = (window.TP && window.TP.tours) || [];
+const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
-/* ---------- Carte ---------- */
+/* =========================
+   Carte Leaflet
+   ========================= */
 (function initMap() {
     if (!Array.isArray(technicianTours) || technicianTours.length === 0) return;
 
@@ -73,7 +78,9 @@ const technicianTours = (window.TP && window.TP.tours) || [];
     }
 })();
 
-/* ---------- Modale replanification ---------- */
+/* =========================
+   Modale replanification
+   ========================= */
 (function () {
     const wrapHTML = `
 <div id="replanWrap" class="hidden">
@@ -131,8 +138,6 @@ const technicianTours = (window.TP && window.TP.tours) || [];
     const fHasTemp  = document.getElementById('rp_has_temp');
     const fHasVal   = document.getElementById('rp_has_validated');
     const btnCancel = document.getElementById('rp_cancel');
-
-    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '';
 
     function openModal({endpoint, numInt, date, time, tech, people, hasTemp='0', hasValidated='0'}) {
         fEndpoint.value = endpoint || '';
@@ -223,7 +228,7 @@ const technicianTours = (window.TP && window.TP.tours) || [];
             async function postTemp(payload) {
                 const res  = await fetch(url, {
                     method:'POST',
-                    headers:{ 'Content-Type':'application/json', 'X-CSRF-TOKEN': csrf, 'Accept':'application/json' },
+                    headers:{ 'Content-Type':'application/json', 'X-CSRF-TOKEN': CSRF_TOKEN, 'Accept':'application/json' },
                     body: JSON.stringify(payload)
                 });
                 const data = await res.json().catch(()=>({}));
@@ -283,7 +288,7 @@ const technicianTours = (window.TP && window.TP.tours) || [];
 
         const res  = await fetch(fEndpoint.value, {
             method:'POST',
-            headers:{ 'Content-Type':'application/json', 'X-CSRF-TOKEN': csrf, 'Accept':'application/json' },
+            headers:{ 'Content-Type':'application/json', 'X-CSRF-TOKEN': CSRF_TOKEN, 'Accept':'application/json' },
             body: JSON.stringify(payload)
         });
         const data = await res.json().catch(()=>({}));
@@ -301,7 +306,9 @@ const technicianTours = (window.TP && window.TP.tours) || [];
     });
 })();
 
-/* ---------- Toggle + / – ---------- */
+/* =========================
+   Toggle + / –
+   ========================= */
 document.addEventListener('click', function (e) {
     const t = e.target.closest('.btn-toggle');
     if (!t) return;
@@ -314,4 +321,223 @@ document.addEventListener('click', function (e) {
     t.setAttribute('aria-expanded', expanded ? 'false' : 'true');
     t.textContent = expanded ? '+' : '–';
     extra.style.display = expanded ? 'none' : 'block';
+});
+
+/* =========================
+   Autoplanning (preview + commit)
+   ========================= */
+const AUTOPLAN = {
+    generateUrl: document.querySelector('meta[name="autoplan-generate"]')?.content || '',
+    commitUrl:   document.querySelector('meta[name="autoplan-commit"]')?.content   || ''
+};
+
+// Spinner : utilise le <span id="autoplanSpinner" hidden> si présent, sinon overlay de secours
+function showAutoplanSpinner(show, text = 'Génération en cours…') {
+    const inline = document.getElementById('autoplanSpinner');
+    if (inline && inline.classList.contains('autoplan-spinner')) {
+        inline.textContent = text;
+        inline.hidden = !show;
+        return;
+    }
+    let el = document.getElementById('autoplanSpinnerOverlay');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'autoplanSpinnerOverlay';
+        el.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:10050;background:#111;color:#fff;padding:8px 12px;border-radius:10px;font:600 13px/1.2 system-ui';
+        document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.style.display = show ? 'block' : 'none';
+}
+
+function humanizeFetchError(err, url) {
+    if (err && err.name === 'ReferenceError') return err.message;
+    const loc = window.location;
+    if (!url) return "URL vide (endpoint non initialisé).";
+    try {
+        const u = new URL(url, loc.origin);
+        if (loc.protocol === 'https:' && u.protocol === 'http:') return "Contenu mixte bloqué (page en https, appel en http).";
+        if (u.origin !== loc.origin) return "Appel cross-origin bloqué (CORS). Utilisez une URL du même domaine.";
+    } catch {}
+    if (!navigator.onLine) return "Hors ligne (navigator.offline).";
+    return err?.message || "Échec de connexion (requête n’atteint pas le serveur).";
+}
+
+/* ---- Helpers de preview (exposés globalement) ---- */
+(function exposePreviewHelpers(){
+    let AUTOPLAN_PROPOSAL = null; // {assignments, meta, ctx:{agref,date}}
+
+    function hhmmFromSeconds(s){
+        const h = Math.floor(s/3600), m = Math.round((s%3600)/60);
+        return `${String(h).padStart(2,'0')}h${String(m).padStart(2,'0')}`;
+    }
+
+    function markStop(numInt, toTech, rdvAt){
+        const btn = document.querySelector(`.btn-replan[data-numint="${CSS.escape(numInt)}"]`);
+        if (!btn) return;
+        const line = btn.closest('.stop-line');
+        if (!line) return;
+        line.classList.add('ap-proposed');
+        let badge = line.querySelector('.ap-badge');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'ap-badge';
+            line.appendChild(badge);
+        }
+        const time = (rdvAt || '').slice(11,16) || '??:??';
+        badge.textContent = `→ ${toTech} • ${time}`;
+    }
+
+    function unmarkAllStops(){
+        document.querySelectorAll('.stop-line.ap-proposed').forEach(el => el.classList.remove('ap-proposed'));
+        document.querySelectorAll('.stop-line .ap-badge').forEach(el => el.remove());
+    }
+
+    function renderPreview(assignments, meta, ctx){
+        AUTOPLAN_PROPOSAL = { assignments, meta, ctx };
+        unmarkAllStops();
+        assignments.forEach(a => markStop(a.numInt, a.toTech, a.rdv_at));
+
+        const ribbon = document.getElementById('autoplanRibbon');
+        const footer = document.getElementById('autoplanFooter');
+        const stats  = document.getElementById('apStats');
+
+        if (stats && meta && meta.per_tech) {
+            const items = Object.entries(meta.per_tech).map(([tech,info]) => {
+                const dur = info.travel_s ? hhmmFromSeconds(info.travel_s) : '—';
+                return `${tech}: ${info.stops} rdv • trajets ${dur}`;
+            });
+            stats.textContent = items.join('  |  ');
+        }
+
+        if (ribbon) { ribbon.hidden = false; ribbon.style.display = 'block'; }
+        if (footer) { footer.hidden = false; footer.style.display = 'block'; }
+
+        if (!document.getElementById('apPreviewStyle')) {
+            const st = document.createElement('style');
+            st.id = 'apPreviewStyle';
+            st.textContent = `
+                .stop-line.ap-proposed { outline: 2px dashed #0ea5e9; outline-offset: 2px; background: rgba(14,165,233,.06); }
+                .stop-line .ap-badge { margin-left: 8px; font-weight:600; font-size: 12px; color:#075985; background:#e0f2fe; padding:2px 6px; border-radius:10px; }
+            `;
+            document.head.appendChild(st);
+        }
+    }
+
+    function clearPreviewUI(){
+        const ribbon = document.getElementById('autoplanRibbon');
+        const footer = document.getElementById('autoplanFooter');
+        if (ribbon) { ribbon.hidden = true; ribbon.style.display = 'none'; }
+        if (footer) { footer.hidden = true; footer.style.display = 'none'; }
+        unmarkAllStops();
+        AUTOPLAN_PROPOSAL = null;
+    }
+
+    // Init : forcer caché si la page arrive sans preview
+    (function initAutoplanUI(){
+        const ribbon = document.getElementById('autoplanRibbon');
+        const footer = document.getElementById('autoplanFooter');
+        if (ribbon) { ribbon.hidden = true; ribbon.style.display = 'none'; }
+        if (footer) { footer.hidden = true; footer.style.display = 'none'; }
+    })();
+
+    // Boutons Annuler/Commit
+    document.getElementById('apCancel')?.addEventListener('click', () => {
+        clearPreviewUI();
+    });
+
+    document.getElementById('apCommit')?.addEventListener('click', async () => {
+        if (!AUTOPLAN_PROPOSAL || !AUTOPLAN_PROPOSAL.assignments?.length) {
+            alert("Aucune proposition à valider.");
+            return;
+        }
+        if (!AUTOPLAN.commitUrl) {
+            alert("URL de commit introuvable.");
+            return;
+        }
+        const ok = window.confirm("Valider ce planning ? Les RDV seront enregistrés (validés).");
+        if (!ok) return;
+
+        showAutoplanSpinner(true, 'Validation en cours…');
+        const { assignments, ctx } = AUTOPLAN_PROPOSAL;
+        try {
+            const res = await fetch(AUTOPLAN.commitUrl, {
+                method: 'POST',
+                headers: { 'Content-Type':'application/json', 'X-CSRF-TOKEN': CSRF_TOKEN, 'Accept':'application/json' },
+                body: JSON.stringify({ agref: ctx.agref, date: ctx.date, assignments })
+            });
+            const data = await res.json().catch(()=>({}));
+            showAutoplanSpinner(false);
+
+            if (!res.ok || data.ok === false) {
+                const detail = data.message || data.msg || (res.status + ' ' + res.statusText);
+                alert("Commit autoplanning : échec.\n" + detail);
+                return;
+            }
+            clearPreviewUI();
+            location.reload();
+        } catch (e) {
+            showAutoplanSpinner(false);
+            alert("Commit autoplanning : erreur réseau.");
+            console.error(e);
+        }
+    });
+
+    // Expose global
+    window.renderPreview   = renderPreview;
+    window.clearPreviewUI  = clearPreviewUI;
+})();
+
+/* ---- Click handler du bouton ---- */
+document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('#btnAutoplan');
+    if (!btn) return;
+
+    showAutoplanSpinner(true, 'Génération en cours…');
+
+    try {
+        const date  = btn.dataset.date || document.querySelector('[name="date"]')?.value || '';
+        const agref = btn.dataset.agref || document.querySelector('[name="agref"]')?.value || '';
+        const mode  = btn.dataset.mode || 'fast';
+        const opt   = btn.dataset.opt  || '1';
+
+        if (!AUTOPLAN.generateUrl) throw new Error("URL generate non définie.");
+        if (!date || !agref)       throw new Error("Paramètres manquants (date/agref).");
+
+        const res = await fetch(AUTOPLAN.generateUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': CSRF_TOKEN,
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ date, agref, mode, opt: opt === '1' })
+        });
+
+        let data = {};
+        try { data = await res.json(); } catch (_) {}
+
+        showAutoplanSpinner(false);
+
+        if (!res.ok || data.ok === false) {
+            const detail = data.message || data.msg || (res.status + ' ' + res.statusText);
+            alert("Autoplanning : échec serveur.\n" + detail);
+            console.error('[Autoplan/generate] HTTP error', res.status, data);
+            return;
+        }
+
+        const assignments = data.assignments || [];
+        if (assignments.length === 0) {
+            window.clearPreviewUI?.();
+            alert("Aucune proposition générée pour ce jour/agence.");
+            return;
+        }
+
+        window.renderPreview(assignments, data.meta || {}, { agref, date });
+    } catch (err) {
+        const hint = humanizeFetchError(err, AUTOPLAN.generateUrl);
+        showAutoplanSpinner(false);
+        alert("Autoplanning : " + hint);
+        console.error('[Autoplan] error', err);
+    }
 });

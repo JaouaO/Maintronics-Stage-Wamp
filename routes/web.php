@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\MainController;
+use App\Http\Controllers\TourPrepController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn() => redirect()->route('authentification'));
@@ -88,11 +89,18 @@ Route::middleware(['check.session', 'security.headers'])->group(function () use 
     Route::post('/interventions/{numInt}/replanifier', [\App\Http\Controllers\MainController::class, 'replanifierAjax'])
         ->name('tournee.replanifier');
 
+    // === Autoplanning ===
+    Route::post('/tourprep/autoplan/generate', [TourPrepController::class, 'autoplanGenerate'])
+        ->name('tourprep.autoplan.generate');
+
+    Route::post('/tourprep/autoplan/commit', [TourPrepController::class, 'autoplanCommit'])
+        ->name('tourprep.autoplan.commit');
+
 });
 
-// Fallback propre
+
+// API-map-tournée (lecture)
+Route::get('/tournee', [TourPrepController::class, 'show'])->name('tournee.show');
+
+// Fallback en DERNIER
 Route::fallback(fn() => redirect()->route('erreur')->with('message', 'Page introuvable.'));
-
-
-//API-map-tournée :
-Route::get('/tournee', 'TourPrepController@show')->name('tournee.show');

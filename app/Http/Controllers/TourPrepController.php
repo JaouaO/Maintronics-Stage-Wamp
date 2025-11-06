@@ -3,6 +3,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\TourPrep\AutoplanService;
+use App\Services\UpdateInterventionService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Services\TourPrep\GeocodeService;
@@ -112,4 +115,84 @@ class TourPrepController extends Controller
         return view('tourprep.index', compact('date','agRef','mode','opt','techTours'))
             ->with('start', $startGeo);
     }
+
+    public function autoplanGenerate(Request $req)
+    {
+        try {
+            $date  = $req->input('date');              // YYYY-MM-DD
+            $agRef = $req->input('agref');             // ex: M59L
+            $mode  = $req->input('mode', 'fast');      // fast|precise
+            $opt   = (bool)$req->input('opt', 1);      // on optimise côté aperçu
+
+            if (!$date || !$agRef) {
+                return response()->json(['ok'=>false,'message'=>'Paramètres manquants (date, agref).'], 422);
+            }
+
+            /** @var AutoplanService $svc */
+            $svc = app(AutoplanService::class);
+            $proposal = $svc->generateProposal($agRef, $date, $mode, $opt);
+
+            return response()->json(['ok'=>true] + $proposal);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json(['ok'=>false,'message'=>$e->getMessage()], 500);
+        }
+    }
+
+    public function autoplanCommit(Request $req): \Illuminate\Http\JsonResponse
+    {
+        $agRef = (string)$req->input('agref', '');
+        $date  = (string)$req->input('date', '');
+        $ops   = (array)$req->input('assignments', []); // [{numInt, fromTech, toTech, rdv_at}...]
+
+        if (!$agRef || !$date || empty($ops)) {
+            return response()->json(['ok' => false, 'message' => 'Entrées incomplètes (agref, date, assignments).'], 422);
+        }
+
+        try {
+            DB::transaction(function () use ($ops) {
+                /** @var UpdateInterventionService $svc */
+                $svc = app(UpdateInterventionService::class);
+
+                foreach ($ops as $op) {
+                    $num  = (string)($op['numInt']  ?? '');
+                    $to   = (string)($op['toTech']  ?? '');
+                    $when = (string)($op['rdv_at']  ?? ''); // "YYYY-MM-DD HH:MM:SS"
+
+                    if ($num === '' || $to === '' || $when === '') {
+                        continue;
+                    }
+
+                    // Construire le DTO attendu par UpdateInterventionService::updateAndPlanRdv()
+                    $dt     = \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $when, 'Europe/Paris');
+                    $compat = new \Illuminate\Http\Request([
+                        'code_sal_auteur' => (string)(session('codeSal') ?: 'system'),
+                        'rea_sal'         => $to,
+                        'date_rdv'        => $dt->toDateString(),
+                        'heure_rdv'       => $dt->format('H:i'),
+                        'urgent'          => false,
+                        'commentaire'     => '(autoplanning)',
+                        'contact_reel'    => '',
+                        'objet_trait'     => 'Planification',
+                        'traitement'      => [],
+                        'affectation'     => [],
+                        'code_postal'     => null,
+                        'ville'           => null,
+                        'marque'          => null,
+                        'action_type'     => 'rdv_valide', // ← très important
+                    ]);
+
+                    $dto = \App\Services\DTO\UpdateInterventionDTO::fromRequest($compat, $num);
+                    $svc->updateAndPlanRdv($dto);
+                }
+            });
+
+            return response()->json(['ok' => true]);
+        } catch (\Throwable $e) {
+            report($e);
+            return response()->json(['ok' => false, 'message' => 'Commit annulé : ' . $e->getMessage()], 500);
+        }
+    }
+
+
 }

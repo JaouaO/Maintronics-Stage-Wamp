@@ -4,34 +4,49 @@
     <meta charset="utf-8">
     <title>Préparation de tournées — {{ $agRef }} — {{ $date }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
 
     {{-- Leaflet --}}
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 
     {{-- Styles page --}}
     <link rel="stylesheet" href="{{ asset('css/tourprep.css') }}">
+
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="autoplan-generate" content="{{ route('tourprep.autoplan.generate', [], false) }}">
+    <meta name="autoplan-commit"   content="{{ route('tourprep.autoplan.commit',   [], false) }}">
 </head>
 <body>
 
 <header class="page">
     <h2 style="margin:0">Tournées — {{ $agRef }} — {{ $date }}</h2>
+
     <form class="controls" method="get" action="{{ route('tournee.show') }}">
         <input type="hidden" name="agref" value="{{ $agRef }}">
         <label>Date <input type="date" name="date" value="{{ $date }}"></label>
         <label>Mode
             <select name="mode">
-                <option value="fast" {{ $mode==='fast'?'selected':'' }}>Rapide (vol d’oiseau)</option>
+                <option value="fast" {{ $mode==='fast'?'selected':'' }}>Rapide</option>
                 <option value="precise" {{ $mode==='precise'?'selected':'' }}>Précis (OSRM)</option>
             </select>
         </label>
         <label>Optimiser
             <select name="opt">
-                <option value="0" {{ !$opt?'selected':'' }}>Non (ordre heure)</option>
-                <option value="1" {{  $opt?'selected':'' }}>Oui (trajet court)</option>
+                <option value="0" {{ !$opt?'selected':'' }}>Non</option>
+                <option value="1" {{  $opt?'selected':'' }}>Oui</option>
             </select>
         </label>
         <button type="submit">Actualiser</button>
+
+        {{-- Bouton Autoplanning --}}
+        <button id="btnAutoplan"
+                type="button"
+                data-date="{{ $date }}"
+                data-agref="{{ $agRef }}"
+                data-mode="{{ $mode }}"
+                data-opt="{{ $opt ? '1' : '0' }}">
+            Planning automatique
+        </button>
+        <span id="autoplanSpinner" class="autoplan-spinner" hidden>Calcul en cours…</span>
     </form>
 </header>
 
@@ -93,7 +108,7 @@
                                             data-numint="{{ data_get($stop,'numint') }}"
                                             data-date="{{ $date }}"
                                             data-time="{{ $heureAff !== '—' ? $heureAff : '' }}"
-                                            data-tech="{{ data_get($tour,'tech_code','') }}"
+                                            data-tech="{{ data_get($tour,'tech','') }}"
                                             data-people='@json($people)'
                                             data-has-temp="{{ !empty($stop['has_temp']) ? 1 : 0 }}"
                                             data-has-validated="{{ !empty($stop['has_validated']) ? 1 : 0 }}">
@@ -102,7 +117,7 @@
 
                                     <button type="button"
                                             class="btn-mini btn-toggle"
-                                            aria-expanded="false"
+                                              aria-expanded="false"
                                             aria-controls="{{ $extraId }}">+
                                     </button>
                                 </div>
@@ -128,6 +143,17 @@
         @endforeach
     </div>
 @endif
+
+<div id="autoplanRibbon" class="autoplan-ribbon" hidden>Proposition de planning (aperçu)</div>
+<div id="autoplanFooter" class="autoplan-footer" hidden>
+    <div class="meta">
+        <span id="apStats"></span>
+    </div>
+    <div class="actions">
+        <button type="button" id="apCancel" class="btn-light">Annuler</button>
+        <button type="button" id="apCommit" class="btn-primary">Valider ce planning</button>
+    </div>
+</div>
 
 {{-- Leaflet --}}
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

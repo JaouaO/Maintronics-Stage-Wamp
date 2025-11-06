@@ -133,3 +133,34 @@ button, select, input[type="date"], input[type="time"], textarea{
 .segmented label{ padding:6px 10px; cursor:pointer; font-size:13px; user-select:none; }
 .segmented input.seg:checked + label{ background:#111; color:#fff; }
 .segmented label + input.seg + label{ border-left:1px solid #d1d5db; }
+
+/* === Autoplanning UI === */
+.btn-autoplan{
+    padding:6px 10px; border:1px solid #d1d5db; border-radius:8px; background:#111; color:#fff; cursor:pointer; margin-left:8px
+}
+.btn-autoplan:hover{ opacity:.9 }
+
+.autoplan-spinner{ margin-left:8px; font-size:12.5px; color:#657089 }
+
+.autoplan-ribbon{
+    position:sticky; top:6px; z-index:5;
+    margin:8px 0; padding:6px 10px; border-radius:8px;
+    background:#fef3c7; color:#92400e; border:1px solid #fde68a; font-weight:700
+}
+
+.autoplan-footer{
+    position:sticky; bottom:0; z-index:6;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:8px 10px; margin-top:10px; border:1px solid #d9deea; border-radius:10px;
+    background:#fff; box-shadow:0 6px 28px rgba(0,0,0,.08);
+}
+.autoplan-footer .actions{ display:flex; gap:8px }
+.autoplan-footer .btn-primary{
+    padding:6px 10px; border-radius:8px; border:1px solid #111; background:#111; color:#fff; cursor:pointer
+}
+.autoplan-footer .btn-light{
+    padding:6px 10px; border-radius:8px; border:1px solid #d1d5db; background:#fff; color:#111; cursor:pointer
+}
+
+/* Panels en mode proposition : léger liseré bleu */
+.autoplan-proposed .tech-card{ box-shadow:inset 0 0 0 2px #cfe0ff; }
