@@ -25,6 +25,7 @@ use App\Services\AuthService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\View;
+use Illuminate\Validation\ValidationException;
 
 class MainController extends Controller
 {

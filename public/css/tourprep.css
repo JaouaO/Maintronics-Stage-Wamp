@@ -1,0 +1,135 @@
+/* =========================================================
+   Tournées (Préparation) — Styles inspirés "Interventions"
+   ========================================================= */
+:root{
+    /* Palette globale */
+    --W: clamp(1024px, 95vw, 1800px);
+    --pad:12px; --gap:10px;
+    --bg:#f6f7fb; --panel:#fff; --ink:#1f2430; --mut:#657089; --line:#d9deea;
+
+    --tag-blue:#e8f1ff;   --tag-blue-ink:#143b7a;
+    --tag-coral:#ffe3e6;  --tag-coral-ink:#7a1d27;
+    --tag-green:#e7fbef;  --tag-green-ink:#0d6b2d;
+    --tag-violet:#efe7ff; --tag-violet-ink:#3d227e;
+    --tag-teal:#e6fbf7;   --tag-teal-ink:#0b5a52;
+    --tag-amber:#fff5dc;  --tag-amber-ink:#7a5400;
+
+    /* Spécifique page */
+    --pill:#eef;
+    --warn:#c1121f;
+    --urgent:#b91c1c;
+    --ok:#223;
+}
+
+/* Base */
+*{ box-sizing:border-box }
+body{
+    margin:16px;
+    background:var(--bg);
+    color:var(--ink);
+    font:13.5px/1.4 Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;
+}
+header.page{
+    display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:8px;
+}
+.controls{
+    display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+}
+label{ font-size:13px }
+button, select, input[type="date"], input[type="time"], textarea{
+    padding:6px 10px; border:1px solid #ccc; border-radius:6px; background:#fff; cursor:pointer;
+}
+
+/* Carte */
+#map{ height:58vh; margin-top:10px; border:1px solid var(--line); border-radius:8px; }
+
+/* Colonnes tech */
+#panels{
+    margin-top:12px; display:flex; flex-wrap:wrap; gap:10px; justify-content:flex-start; align-content:flex-start;
+}
+.tech-card{
+    flex:0 0 320px; max-width:320px; border:1px solid var(--line); border-radius:10px; padding:8px; font-size:13px; background:#fff;
+}
+.tech-header{
+    display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; margin:2px 0 6px;
+}
+.tech-name{ font-weight:700; font-size:14px; }
+.pill{
+    display:inline-block; padding:2px 6px; border-radius:999px; background:var(--pill); font-size:11px; color:var(--ok);
+}
+.duration{ margin-left:6px; font-size:12px; }
+.duration.warn{ color:var(--warn); font-weight:700; }
+
+/* Urgent */
+.badge-urgent{
+    display:inline-block; margin-left:6px; padding:1px 5px; border-radius:6px;
+    background:#fee2e2; color:#7f1d1d; font-weight:700; font-size:10px;
+}
+
+/* Liste d’arrêts compacte */
+.stops{ margin:0; padding-left:18px; }
+.stops li{ margin:6px 0; line-height:1.25; }
+
+/* Ligne d’arrêt */
+.cp-city{
+    flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:700;
+}
+.hour{ color:#667085; flex:0 0 auto; }
+.stop-line{
+    display:flex; align-items:center; gap:6px; flex-wrap:nowrap;
+}
+.stop-mini-actions{
+    display:flex; align-items:center; gap:4px; white-space:nowrap; flex-shrink:0; flex:0 0 auto;
+}
+.stop-extra{
+    display:none; margin:6px 0 0 0; padding-left:8px; border-left:3px solid var(--line);
+}
+.stop-extra div{ font-size:12px; margin:2px 0; }
+
+/* Boutons mini */
+.btn-mini{
+    border:1px solid #d1d5db; background:#fff; font-size:11px; padding:2px 6px; border-radius:6px; cursor:pointer;
+}
+.btn-mini:hover{ background:#f8fafc; }
+.btn-toggle{ width:18px; height:18px; display:inline-grid; place-items:center; font-weight:700; font-size:12px; line-height:1; }
+
+/* Modale replanification */
+.hidden{ display:none; }
+.modal-backdrop{
+    position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:10000;
+}
+.modal{
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:10010;
+}
+.modal .panel{
+    width:min(700px,96vw); max-height:90vh; overflow:auto; background:#fff;
+    border:1px solid #e5e7eb; border-radius:10px; padding:14px; font-size:14px; box-sizing:border-box;
+}
+.modal .panel h3{ margin:0 0 8px; font-size:16px; }
+.modal .panel label{ display:block; margin:8px 0 4px; }
+.modal .panel input,
+.modal .panel select,
+.modal .panel textarea{
+    width:100%; max-width:100%; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px; background:#fff; box-sizing:border-box;
+}
+.modal .actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:12px; }
+.modal .btn{
+    padding:6px 10px; border:1px solid #d1d5db; border-radius:6px; background:#fff; cursor:pointer;
+}
+.modal .btn.primary{ background:#111; color:#fff; border-color:#111; }
+
+/* RDV temporaire (orangé) */
+.stop-line.is-temp{
+    background:#fff7ed; border-left:3px solid #f59e0b; border-radius:6px; padding-left:6px;
+}
+.badge-temp{
+    display:inline-block; margin-left:6px; padding:1px 6px; border-radius:6px;
+    background:#FEF3C7; color:#92400E; font-weight:700; font-size:10px; border:1px solid #FDE68A;
+}
+
+/* Segmented toggle Temp/Validé */
+.segmented{ display:inline-flex; border:1px solid #d1d5db; border-radius:8px; overflow:hidden; }
+.segmented input.seg{ position:absolute; left:-9999px; }
+.segmented label{ padding:6px 10px; cursor:pointer; font-size:13px; user-select:none; }
+.segmented input.seg:checked + label{ background:#111; color:#fff; }
+.segmented label + input.seg + label{ border-left:1px solid #d1d5db; }
