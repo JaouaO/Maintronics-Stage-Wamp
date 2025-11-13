@@ -251,12 +251,14 @@ export function initAgenda() {
 
         const btn = document.createElement('a');
         btn.id = 'btnTournee';
-        btn.className = 'btn btn-sm';
-        btn.style.marginLeft = '8px';
+// mêmes classes qu’un bouton "Planifier un nouvel appel"
+        btn.className = 'btn btn-sm btn-plan-call btn-tournee';
+
         btn.href = `/tournee?date=${encodeURIComponent(ymdStr)}&agref=${encodeURIComponent(agRef)}&mode=fast&opt=0`;
         btn.target = '_blank';
         btn.rel = 'noopener';
-        btn.textContent = agRef ? `🗺️ Tournée ${agRef}` : '🗺️ Tournée';
+        btn.textContent = agRef ? `📍 Tournée ${agRef}` : '📍 Tournée';
+
         listTitle.appendChild(btn);
 
         if (!bucket.list.length) {

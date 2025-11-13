@@ -17,6 +17,16 @@
 </head>
 <body>
 
+@php
+    // Date du jour (format YYYY-MM-DD)
+    $today            = date('Y-m-d');
+    // On interdit l'autoplanning pour aujourd'hui ou une date passée
+    $autoplanDisabled = ($date <= $today);
+
+    // Constante locale pour la durée d'une intervention (1h)
+    $perStopSeconds   = 3600;
+@endphp
+
 <header class="page">
     <h2 style="margin:0">Tournées — {{ $agRef }} — {{ $date }}</h2>
 
@@ -43,10 +53,18 @@
                 data-date="{{ $date }}"
                 data-agref="{{ $agRef }}"
                 data-mode="{{ $mode }}"
-                data-opt="{{ $opt ? '1' : '0' }}">
+                data-opt="{{ $opt ? '1' : '0' }}"
+                {{ $autoplanDisabled ? 'disabled aria-disabled=true' : '' }}
+                style="{{ $autoplanDisabled ? 'opacity:.5;cursor:not-allowed;' : '' }}">
             Planning automatique
         </button>
         <span id="autoplanSpinner" class="autoplan-spinner" hidden>Calcul en cours…</span>
+
+        @if($autoplanDisabled)
+            <span class="autoplan-note" style="margin-left:8px;font-size:12px;color:#b91c1c;">
+                Autoplanning disponible uniquement pour une date future.
+            </span>
+        @endif
     </form>
 </header>
 
@@ -58,17 +76,26 @@
     <div id="panels">
         @foreach($techTours as $tour)
             @php
+                // Distance totale de trajets (TourBuilder)
                 $distanceKm = number_format(($tour['total']['dist_m'] ?? 0)/1000, 1, ',', ' ');
-                $durationS  = max(0, $tour['total']['dur_s'] ?? 0);
-                $over6h     = (bool)($tour['total']['over6h'] ?? false);
+                $travelS    = max(0, $tour['total']['dur_s'] ?? 0);   // trajets seuls
+
+                // Nombre de stops
+                $stopsCount = is_array($tour['stops'] ?? null) ? count($tour['stops']) : 0;
+
+                // Durée de journée = trajets + 1h par intervention
+                $daySeconds = $travelS + $stopsCount * $perStopSeconds;
+
+                // Alerte > 6h basée sur la durée "route + interventions"
+                $over6hDay  = ($daySeconds > 6 * 3600);
             @endphp
 
             <div class="tech-card">
                 <div class="tech-header">
                     <span class="tech-name">Tech {{ $tour['tech'] }}</span>
                     <span class="pill">Distance ~ {{ $distanceKm }} km</span>
-                    <span class="duration {{ $over6h ? 'warn' : '' }}">
-                        Durée trajet: {{ gmdate('H\hi', $durationS) }}{{ $over6h ? ' — ⚠ > 6h' : '' }}
+                    <span class="duration {{ $over6hDay ? 'warn' : '' }}">
+                        Durée route + interventions : {{ gmdate('H\hi', $daySeconds) }}{{ $over6hDay ? ' — ⚠ > 6h' : '' }}
                     </span>
                 </div>
 
@@ -117,7 +144,7 @@
 
                                     <button type="button"
                                             class="btn-mini btn-toggle"
-                                              aria-expanded="false"
+                                            aria-expanded="false"
                                             aria-controls="{{ $extraId }}">+
                                     </button>
                                 </div>

@@ -116,7 +116,7 @@ class TourPrepController extends Controller
             ->with('start', $startGeo);
     }
 
-    public function autoplanGenerate(Request $req)
+    public function autoplanGenerate(Request $req): \Illuminate\Http\JsonResponse
     {
         try {
             $date  = $req->input('date');              // YYYY-MM-DD
@@ -126,6 +126,15 @@ class TourPrepController extends Controller
 
             if (!$date || !$agRef) {
                 return response()->json(['ok'=>false,'message'=>'Paramètres manquants (date, agref).'], 422);
+            }
+
+            // ❌ Blocage autoplanning sur aujourd'hui ou date passée
+            $today = date('Y-m-d');
+            if ($date <= $today) {
+                return response()->json([
+                    'ok'      => false,
+                    'message' => 'L\'autoplanning n’est autorisé que pour une date future.'
+                ], 422);
             }
 
             /** @var AutoplanService $svc */
@@ -138,6 +147,7 @@ class TourPrepController extends Controller
             return response()->json(['ok'=>false,'message'=>$e->getMessage()], 500);
         }
     }
+
 
     public function autoplanCommit(Request $req): \Illuminate\Http\JsonResponse
     {

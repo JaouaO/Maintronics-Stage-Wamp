@@ -6,7 +6,23 @@ use Illuminate\Support\Facades\DB;
 
 class AutoplanService
 {
-    private const LIMIT_S = 6 * 3600; // 6h max trajets (retour agence inclus), sauf cas 1 stop
+    /**
+     * 6h max entre départ agence et retour agence
+     * (trajets + durée moyenne par intervention).
+     */
+    private const LIMIT_S      = 6 * 3600;
+    private const DAY_START_TIME = '08:00:00';
+
+    /**
+     * Durée moyenne d'une intervention (en secondes).
+     * => 1h par défaut.
+     */
+    private const PER_STOP_S   = 3600;
+
+    /**
+     * Vitesse moyenne (km/h) pour le calcul des durées de trajet.
+     */
+    private const AVG_SPEED_KMH = DistanceServiceFast::DEFAULT_KMH;
 
     private DistanceServiceFast $fast;
     private DistanceServiceOsrm $osrm;
@@ -17,6 +33,26 @@ class AutoplanService
         $this->fast = $fast;
         $this->osrm = $osrm;
         $this->geo  = $geo;
+    }
+
+
+    private function computeDayBounds(string $date, array $agency, array $route, string $mode): ?array
+    {
+        if (empty($route)) {
+            return null;
+        }
+
+        // durées "logiques" utilisées aussi pour la contrainte 6h
+        $daySeconds = $this->routeDaySeconds($agency, $route, $mode, true);
+
+        $start = Carbon::parse($date . ' ' . self::DAY_START_TIME, 'Europe/Paris');
+        $end   = $start->copy()->addSeconds($daySeconds);
+
+        return [
+            'day_s'     => $daySeconds,
+            'depart_at' => $start->format('Y-m-d H:i:s'),
+            'return_at' => $end->format('Y-m-d H:i:s'),
+        ];
     }
 
     public function generateProposal(string $agRef, string $date, string $mode = 'fast', bool $opt = true): array
@@ -56,17 +92,43 @@ class AutoplanService
             return ['assignments' => [], 'meta' => ['note' => 'Aucun RDV']];
         }
 
-        // 3) Géocodage stops
+// État actuel (tech + date/heure) pour chaque dossier
+        $currentState = [];
+        foreach ($rows as $r) {
+            $num = (string)$r->NumInt;
+
+            $rdvAt = null;
+            if (!empty($r->DateIntPrevu) && !empty($r->HeureIntPrevu)) {
+                try {
+                    $dt = Carbon::parse($r->DateIntPrevu . ' ' . $r->HeureIntPrevu, 'Europe/Paris');
+                    $rdvAt = $dt->format('Y-m-d H:i:s');
+                } catch (\Throwable $e) {
+                    $rdvAt = null;
+                }
+            }
+
+            $currentState[$num] = [
+                'tech'   => (string)$r->CodeTech,
+                'rdv_at' => $rdvAt,
+            ];
+        }
+
+
+        // 3) Géocodage stops (plus précis : rue + CP + ville)
         $stops = [];
         foreach ($rows as $r) {
-            $addr = trim(implode(' ', array_filter([(string)($r->CPLivCli ?? ''), (string)($r->VilleLivCli ?? '')])));
-            $g = $this->geo->geocode($addr);
+            $street = (string)($r->AdLivCli   ?? '');
+            $cp     = (string)($r->CPLivCli   ?? '');
+            $city   = (string)($r->VilleLivCli?? '');
+
+            $g = $this->geo->geocodeParts($street, $cp, $city);
             if (!$g) continue;
+
             $stops[] = [
                 'numint'   => (string)$r->NumInt,
                 'tech'     => (string)$r->CodeTech,
-                'cp'       => (string)($r->CPLivCli ?? ''),
-                'city'     => (string)($r->VilleLivCli ?? ''),
+                'cp'       => $cp,
+                'city'     => $city,
                 'lat'      => (float)$g['lat'],
                 'lon'      => (float)$g['lon'],
                 'urgent'   => (int)$r->urgent,
@@ -87,7 +149,7 @@ class AutoplanService
             $routes[$tech] = $this->nearestNeighborRoute($agency, $list, $mode);
         }
 
-        // 6) Compaction ≤ 6h (retour inclus), avec garde fou pour cas 1 stop
+        // 6) Compaction ≤ 6h (trajets + interventions), avec garde fou pour cas 1 stop
         $this->compactRoutes($routes, $agency, $metaTech, $mode);
 
         // 7) Ajout de tech et déchargement tant qu’il existe une tournée >6h avec ≥2 stops
@@ -101,23 +163,62 @@ class AutoplanService
         // 8) Assignments + horaires
         $assignments = $this->buildAssignmentsWithSchedule($routes, $agency, $date, $mode);
 
-        // 9) Meta
+// 8bis) Détection "planning déjà optimisé"
+// -> si pour chaque NumInt, le tech et l'horaire sont déjà identiques
+        $hasChange = false;
+        foreach ($assignments as $a) {
+            $num = (string)($a['numInt'] ?? '');
+            if ($num === '' || !isset($currentState[$num])) {
+                $hasChange = true;
+                break;
+            }
+
+            $curr = $currentState[$num];
+
+            // comparaison tech
+            if ((string)$a['toTech'] !== (string)$curr['tech']) {
+                $hasChange = true;
+                break;
+            }
+
+            // comparaison horaire
+            // a['rdv_at'] est au format "Y-m-d H:i:s"
+            $propRdv = (string)$a['rdv_at'];
+            $currRdv = (string)($curr['rdv_at'] ?? '');
+
+            if ($currRdv === '' || $propRdv !== $currRdv) {
+                $hasChange = true;
+                break;
+            }
+        }
+
+// 9) Meta
         $perTech = [];
         foreach ($routes as $tech => $list) {
             $perTech[$tech] = [
                 'stops'      => count($list),
+                // temps de trajet pur pour info
                 'travel_s'   => $this->routeTravelSeconds($agency, $list, $mode, true),
                 'internal'   => (bool)($metaTech[$tech]['internal'] ?? false),
             ];
         }
 
+        $meta = [
+            'per_tech'        => $perTech,
+            'total_travel_s'  => array_sum(array_column($perTech, 'travel_s')),
+        ];
+
+// Si aucun changement, on vide les assignments et on pose un message explicite
+        if (!$hasChange) {
+            $assignments = [];
+            $meta['message'] = 'Planning déjà optimisé : aucune modification nécessaire.';
+        }
+
         return [
             'assignments' => $assignments,
-            'meta' => [
-                'per_tech'        => $perTech,
-                'total_travel_s'  => array_sum(array_column($perTech, 'travel_s')),
-            ],
+            'meta'        => $meta,
         ];
+
     }
 
     /* ---------------- Helpers ---------------- */
@@ -160,10 +261,11 @@ class AutoplanService
 
     private function durationSeconds(float $lat1, float $lon1, float $lat2, float $lon2, string $mode): int
     {
-        return $this->fast->durationSeconds($lat1, $lon1, $lat2, $lon2, 45);
+        // On garde le calcul "fast" mais avec vitesse en constante.
+        return $this->fast->durationSeconds($lat1, $lon1, $lat2, $lon2, self::AVG_SPEED_KMH);
     }
 
-    /** Total trajets, avec ou sans retour agence. */
+    /** Durée de trajets seule (aller + entre stops + retour). */
     private function routeTravelSeconds(array $agency, array $route, string $mode, bool $withReturn = true): int
     {
         if (empty($route)) return 0;
@@ -179,27 +281,41 @@ class AutoplanService
         return $tot;
     }
 
-    /** On demande un split seulement si >6h **et** ≥2 stops (1 stop >6h = toléré). */
+    /**
+     * Durée "journée" = trajets + interventions.
+     * Utilisée pour la contrainte de 6h entre départ et retour.
+     */
+    private function routeDaySeconds(array $agency, array $route, string $mode, bool $withReturn = true): int
+    {
+        $travel  = $this->routeTravelSeconds($agency, $route, $mode, $withReturn);
+        $service = count($route) * self::PER_STOP_S;
+        return $travel + $service;
+    }
+
+    /**
+     * On demande un split seulement si >6h **et** ≥2 stops.
+     * => exception préservée pour les tournées à 1 stop, même si > 6h.
+     */
     private function anyOver6hNeedingSplit(array $routes, array $agency, string $mode): bool
     {
         foreach ($routes as $rt) {
-            if (count($rt) >= 2 && $this->routeTravelSeconds($agency, $rt, $mode, true) > self::LIMIT_S) {
+            if (count($rt) >= 2 && $this->routeDaySeconds($agency, $rt, $mode, true) > self::LIMIT_S) {
                 return true;
             }
         }
         return false;
     }
 
-    /** Compaction : recase des petites tournées sans jamais dépasser 6h (retour inclus). */
+    /** Compaction : recase des petites tournées sans jamais dépasser 6h de journée (sauf cas receveur = 1 stop). */
     private function compactRoutes(array &$routes, array $agency, array $metaTech, string $mode): void
     {
         if (count($routes) <= 1) return;
 
         while (true) {
-            // charges (retour inclus)
+            // charges (trajets + interventions + retour)
             $load = [];
             foreach ($routes as $tech => $rt) {
-                $load[$tech] = $this->routeTravelSeconds($agency, $rt, $mode, true);
+                $load[$tech] = $this->routeDaySeconds($agency, $rt, $mode, true);
             }
             asort($load);
 
@@ -226,15 +342,20 @@ class AutoplanService
 
             $movedAll = true;
             foreach ($srcStops as $stop) {
-                $bestT = null; $bestPos = null; $bestDelta = PHP_INT_MAX; $bestTotal = PHP_INT_MAX;
+                $bestT = null; $bestPos = null; $bestDelta = PHP_INT_MAX;
 
                 foreach ($targets as $tgt) {
-                    [$pos, $delta, $newTotal] = $this->bestInsertion($routes[$tgt], $agency, $stop, $mode);
-                    // n’accepte que si le receveur reste ≤ 6h, ou (cas particulier) si receveur n’aurait qu’1 stop après insertion
-                    $futureCount = count($routes[$tgt]) + 1;
-                    $okOnLimit = ($futureCount === 1) ? true : ($newTotal <= self::LIMIT_S);
+                    [$pos, $delta, $newTravelTotal] = $this->bestInsertion($routes[$tgt], $agency, $stop, $mode);
+
+                    $futureCount  = count($routes[$tgt]) + 1;
+                    $futureTravel = $newTravelTotal;
+                    $futureDay    = $futureTravel + $futureCount * self::PER_STOP_S;
+
+                    // receveur toléré >6h uniquement si il n'aurait qu'1 stop
+                    $okOnLimit = ($futureCount === 1) ? true : ($futureDay <= self::LIMIT_S);
+
                     if ($okOnLimit && $delta < $bestDelta) {
-                        $bestDelta = $delta; $bestT = $tgt; $bestPos = $pos; $bestTotal = $newTotal;
+                        $bestDelta = $delta; $bestT = $tgt; $bestPos = $pos;
                     }
                 }
 
@@ -252,23 +373,23 @@ class AutoplanService
         }
     }
 
-    /** Teste toutes les positions d’insertion et renvoie [pos, delta, new_total] (retour inclus). */
+    /** Teste toutes les positions d’insertion et renvoie [pos, deltaTravel, newTravelTotal] (retour inclus). */
     private function bestInsertion(array $route, array $agency, array $stop, string $mode): array
     {
         $base = $this->routeTravelSeconds($agency, $route, $mode, true);
         $n = count($route);
 
-        $bestPos = 0; $bestDelta = PHP_INT_MAX; $bestTotal = PHP_INT_MAX;
+        $bestPos = 0; $bestDelta = PHP_INT_MAX; $bestTotalTravel = PHP_INT_MAX;
         for ($i = 0; $i <= $n; $i++) {
             $candidate = $route;
             array_splice($candidate, $i, 0, [$stop]);
-            $newTotal = $this->routeTravelSeconds($agency, $candidate, $mode, true);
-            $delta = $newTotal - $base;
+            $newTotalTravel = $this->routeTravelSeconds($agency, $candidate, $mode, true);
+            $delta = $newTotalTravel - $base;
             if ($delta < $bestDelta) {
-                $bestDelta = $delta; $bestPos = $i; $bestTotal = $newTotal;
+                $bestDelta = $delta; $bestPos = $i; $bestTotalTravel = $newTotalTravel;
             }
         }
-        return [$bestPos, $bestDelta, $bestTotal];
+        return [$bestPos, $bestDelta, $bestTotalTravel];
     }
 
     private function pickExtraTech(string $agRef, array $already): ?string
@@ -286,28 +407,32 @@ class AutoplanService
         return null;
     }
 
-    /** Décharge le plus chargé vers $receiverTech sans faire dépasser 6h (sauf cas receveur = 1 stop). */
+    /** Décharge le plus chargé vers $receiverTech sans faire dépasser 6h de journée (sauf cas receveur = 1 stop). */
     private function lightenHeaviestInto(array &$routes, array $agency, string $receiverTech, string $mode): void
     {
-        // trouver donneur (le plus chargé en tenant compte du retour)
+        // trouver donneur (le plus chargé en durée de journée)
         $heaviest = null; $max = -1;
         foreach ($routes as $tech => $rt) {
-            $t = $this->routeTravelSeconds($agency, $rt, $mode, true);
+            $t = $this->routeDaySeconds($agency, $rt, $mode, true);
             if ($t > $max) { $max = $t; $heaviest = $tech; }
         }
         if ($heaviest === null || empty($routes[$heaviest])) return;
 
         $donor = &$routes[$heaviest];
         while (!empty($donor)) {
-            $donorLoad = $this->routeTravelSeconds($agency, $donor, $mode, true);
-            // on s’arrête si (a) donneur ≤ 6h ou (b) il ne lui reste déjà qu’un stop (cas toléré >6h)
+            $donorLoad = $this->routeDaySeconds($agency, $donor, $mode, true);
+            // on s’arrête si (a) donneur ≤ 6h de journée ou (b) il ne lui reste déjà qu’un stop (cas toléré >6h)
             if ($donorLoad <= self::LIMIT_S || count($donor) <= 1) break;
 
             $stop = array_pop($donor);
 
-            [$pos, $delta, $newTotal] = $this->bestInsertion($routes[$receiverTech], $agency, $stop, $mode);
-            $futureCount = count($routes[$receiverTech]) + 1;
-            $okOnLimit = ($futureCount === 1) ? true : ($newTotal <= self::LIMIT_S);
+            [$pos, $deltaTravel, $newTravelTotal] = $this->bestInsertion($routes[$receiverTech], $agency, $stop, $mode);
+            $futureCount  = count($routes[$receiverTech]) + 1;
+            $futureTravel = $newTravelTotal;
+            $futureDay    = $futureTravel + $futureCount * self::PER_STOP_S;
+
+            // receveur toléré >6h uniquement si il n'aurait qu'1 stop
+            $okOnLimit = ($futureCount === 1) ? true : ($futureDay <= self::LIMIT_S);
 
             if ($okOnLimit) {
                 $routes[$receiverTech] = array_merge(
@@ -316,7 +441,7 @@ class AutoplanService
                     array_slice($routes[$receiverTech], $pos)
                 );
             } else {
-                // si même l’insertion “optimale” dépasse 6h avec ≥2 stops, on ne force pas
+                // si même l’insertion “optimale” dépasse 6h de journée avec ≥2 stops, on ne force pas
                 break;
             }
         }
@@ -333,7 +458,10 @@ class AutoplanService
                 $tsec = $this->durationSeconds($pos['lat'],$pos['lon'],$s['lat'],$s['lon'],$mode);
                 $arrival = $cur->copy()->addSeconds($tsec);
 
+                // marge 5 minutes
                 $start = $arrival->copy()->addMinutes(5)->second(0);
+
+                // arrondi au 10 minutes supérieur
                 $m = (int)$start->minute;
                 $roundUp = ($m % 10) ? (10 - ($m % 10)) : 0;
                 if ($roundUp > 0) $start->addMinutes($roundUp);
@@ -345,10 +473,12 @@ class AutoplanService
                     'rdv_at'   => $start->format('Y-m-d H:i:s'),
                 ];
 
-                $cur = $start->copy()->addMinutes(30);
+                // durée d'intervention = constante (1h)
+                $cur = $start->copy()->addSeconds(self::PER_STOP_S);
                 $pos = ['lat'=>$s['lat'],'lon'=>$s['lon']];
             }
         }
         return $assignments;
     }
+
 }

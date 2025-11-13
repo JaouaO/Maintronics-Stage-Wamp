@@ -1,14 +1,18 @@
 <?php
-// app/Services/TourPrep/DistanceServiceFast.php
 namespace App\Services\TourPrep;
 
 class DistanceServiceFast
 {
     /**
+     * Vitesse moyenne par défaut (km/h).
+     */
+    public const DEFAULT_KMH = 45;
+
+    /**
      * Distance (m) + durée (s) à ~km/h entre deux points {lat,lon}
      * Retourne [dist_m, duree_s] (compatible avec l'existant).
      */
-    public function segment(array $a, array $b, $kmh = 45): array
+    public function segment(array $a, array $b, $kmh = self::DEFAULT_KMH): array
     {
         $dKm    = $this->haversine($a['lat'], $a['lon'], $b['lat'], $b['lon']);
         $dist_m = (int) round($dKm * 1000);
@@ -27,9 +31,9 @@ class DistanceServiceFast
     }
 
     /**
-     * Optionnel mais pratique : durée (s) à ~km/h entre 2 points.
+     * Durée (s) à ~km/h entre 2 points.
      */
-    public function durationSeconds(float $lat1, float $lon1, float $lat2, float $lon2, int $kmh = 45): int
+    public function durationSeconds(float $lat1, float $lon1, float $lat2, float $lon2, int $kmh = self::DEFAULT_KMH): int
     {
         $kmh = max($kmh, 1);
         $dKm = $this->haversine($lat1, $lon1, $lat2, $lon2);

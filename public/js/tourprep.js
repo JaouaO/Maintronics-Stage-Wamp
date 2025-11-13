@@ -110,11 +110,15 @@ const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content ||
         </label>
 
         <label>Type de RDV</label>
-        <div class="segmented" role="tablist" aria-label="Type de RDV">
-          <input class="seg" type="radio" name="rp_mode" id="rp_mode_valide" value="valide" checked>
-          <label for="rp_mode_valide">Validé</label>
-          <input class="seg" type="radio" name="rp_mode" id="rp_mode_temp" value="temp">
-          <label for="rp_mode_temp">Temporaire</label>
+        <div class="rdv-type-toggle" role="radiogroup" aria-label="Type de RDV">
+          <label class="rdv-chip rdv-chip--valide">
+            <input class="seg" type="radio" name="rp_mode" id="rp_mode_valide" value="valide" checked>
+            <span>Validé</span>
+          </label>
+          <label class="rdv-chip rdv-chip--temp">
+            <input class="seg" type="radio" name="rp_mode" id="rp_mode_temp" value="temp">
+            <span>Temporaire</span>
+          </label>
         </div>
 
         <div class="actions">
@@ -125,6 +129,7 @@ const CSRF_TOKEN = document.querySelector('meta[name="csrf-token"]')?.content ||
     </div>
   </div>
 </div>`;
+
     document.body.insertAdjacentHTML('beforeend', wrapHTML);
 
     const wrap      = document.getElementById('replanWrap');
@@ -403,12 +408,32 @@ function humanizeFetchError(err, url) {
         const stats  = document.getElementById('apStats');
 
         if (stats && meta && meta.per_tech) {
-            const items = Object.entries(meta.per_tech).map(([tech,info]) => {
-                const dur = info.travel_s ? hhmmFromSeconds(info.travel_s) : '—';
-                return `${tech}: ${info.stops} rdv • trajets ${dur}`;
+            const items = Object.entries(meta.per_tech).map(([tech, info]) => {
+                const stops = info.stops ?? 0;
+
+                // Durée de journée (trajets + interventions)
+                let dayLabel = '—';
+                if (typeof info.day_s === 'number' && info.day_s > 0) {
+                    dayLabel = hhmmFromSeconds(info.day_s);
+                } else if (typeof info.travel_s === 'number') {
+                    // fallback si jamais day_s n’est pas là
+                    dayLabel = hhmmFromSeconds(info.travel_s);
+                }
+
+                // Créneau horaire départ → retour (si dispo)
+                let span = '';
+                if (info.depart_at && info.return_at) {
+                    const d = String(info.depart_at).slice(11,16);
+                    const r = String(info.return_at).slice(11,16);
+                    span = `${d} → ${r}`;
+                }
+
+                return `${tech}: ${stops} rdv • journée ${dayLabel}` + (span ? ` • ${span}` : '');
             });
+
             stats.textContent = items.join('  |  ');
         }
+
 
         if (ribbon) { ribbon.hidden = false; ribbon.style.display = 'block'; }
         if (footer) { footer.hidden = false; footer.style.display = 'block'; }
@@ -529,9 +554,14 @@ document.addEventListener('click', async (e) => {
         const assignments = data.assignments || [];
         if (assignments.length === 0) {
             window.clearPreviewUI?.();
-            alert("Aucune proposition générée pour ce jour/agence.");
+            const msg =
+                (data.meta && (data.meta.message || data.meta.note))
+                    ? (data.meta.message || data.meta.note)
+                    : "Aucune proposition générée pour ce jour/agence.";
+            alert(msg);
             return;
         }
+
 
         window.renderPreview(assignments, data.meta || {}, { agref, date });
     } catch (err) {
