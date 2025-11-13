@@ -1,192 +1,268 @@
 (() => {
-    const table = document.getElementById('intervTable');
-    const tbody = document.getElementById('rowsBody');
-    const form  = document.getElementById('filterForm');
-    if (!table || !tbody || !form) return;
+    const tableElement = document.getElementById('intervTable');
+    const tableBody = document.getElementById('rowsBody');
+    const filterForm = document.getElementById('filterForm');
 
-    // ---------- Utils ----------
-    const ths = Array.from(table.tHead?.rows?.[0]?.cells || []);
+    if (!tableElement || !tableBody || !filterForm) return;
+
+    // ---------- Raccourcis DOM ----------
+    const headerCells = Array.from(tableElement.tHead?.rows?.[0]?.cells || []);
     const scopeInput = document.getElementById('scope');
     const chipUrgent = document.querySelector('.b-chip-urgent');
-    const chipMe     = document.querySelector('.b-chip-me');
-    const perPageSel = document.getElementById('perpage');
-    const searchInput= document.getElementById('q');
-    const clearBtn   = document.querySelector('.b-clear');
+    const chipMe = document.querySelector('.b-chip-me');
+    const perPageSelect = document.getElementById('perpage');
+    const searchInput = document.getElementById('q');
+    const clearButton = document.querySelector('.b-clear');
 
-    let currentSort = { idx: null, dir: 'asc', type: 'text' };
+    // État courant du tri
+    let currentSort = { columnIndex: null, direction: 'asc', type: 'text' };
 
-    function parseDateFR(s) {
-        if (!s || s === '—') return null;
-        const [d, m, y] = s.split('/');
-        const t = new Date(+y, (+m || 1) - 1, +d || 1).getTime();
-        return Number.isFinite(t) ? t : null;
+    // ---------- Helpers parsing valeurs ----------
+    function parseDateFR(dateString) {
+        if (!dateString || dateString === '—') return null;
+        const [day, month, year] = dateString.split('/');
+        const timestamp = new Date(+year, (+month || 1) - 1, +day || 1).getTime();
+        return Number.isFinite(timestamp) ? timestamp : null;
     }
-    function parseTime(s) {
-        if (!s || s === '—') return null;
-        const [H, M] = s.split(':');
-        const t = (+H)*60 + (+M || 0);
-        return Number.isFinite(t) ? t : null;
+
+    function parseTime(timeString) {
+        if (!timeString || timeString === '—') return null;
+        const [hourString, minuteString] = timeString.split(':');
+        const minutesTotal = (+hourString) * 60 + (+minuteString || 0);
+        return Number.isFinite(minutesTotal) ? minutesTotal : null;
     }
-    function getCellValue(tr, idx, type) {
-        const cell = tr.children[idx];
-        const txt  = (cell?.textContent || '').trim();
-        switch (type) {
-            case 'date': return parseDateFR(txt);
-            case 'time': return parseTime(txt);
-            case 'num':  return Number.isFinite(+txt.replace(/\s/g,'')) ? +txt.replace(/\s/g,'') : null;
-            default:     return txt.toLowerCase();
+
+    function getCellValue(tableRow, columnIndex, valueType) {
+        const cell = tableRow.children[columnIndex];
+        const rawText = (cell?.textContent || '').trim();
+
+        switch (valueType) {
+            case 'date':
+                return parseDateFR(rawText);
+            case 'time':
+                return parseTime(rawText);
+            case 'num': {
+                const numericText = rawText.replace(/\s/g, '');
+                return Number.isFinite(+numericText) ? +numericText : null;
+            }
+            default:
+                return rawText.toLowerCase();
         }
     }
 
-    // Associer <tr.master> (ligne principale) et <tr.row-detail> (détail)
-    function getPairs() {
-        const masters = Array.from(tbody.querySelectorAll('tr.row[data-row-id]'));
-        return masters.map((m, i) => {
-            const id = m.dataset.rowId;
-            const det = m.nextElementSibling;
-            const isDetail = det && det.matches(`tr.row-detail[data-detail-for="${id}"]`);
-            return { master: m, detail: isDetail ? det : null, idx: i }; // idx = tri stable
+    // ---------- Paire (ligne principale + ligne détail) ----------
+    function getRowPairs() {
+        const masterRows = Array.from(tableBody.querySelectorAll('tr.row[data-row-id]'));
+
+        return masterRows.map((masterRow, originalIndex) => {
+            const rowId = masterRow.dataset.rowId;
+            const detailRowCandidate = masterRow.nextElementSibling;
+            const isDetailMatch = detailRowCandidate &&
+                detailRowCandidate.matches(`tr.row-detail[data-detail-for="${rowId}"]`);
+
+            return {
+                master: masterRow,
+                detail: isDetailMatch ? detailRowCandidate : null,
+                originalIndex // pour tri stable
+            };
         });
     }
 
-    function applyAriaSort(th, dir) {
-        ths.forEach(t => t.removeAttribute('aria-sort'));
-        if (th) th.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : 'descending');
+    // ---------- ARIA & persistance du tri ----------
+    function applyAriaSort(thElement, direction) {
+        headerCells.forEach(headerCell => headerCell.removeAttribute('aria-sort'));
+        if (thElement) {
+            thElement.setAttribute(
+                'aria-sort',
+                direction === 'asc' ? 'ascending' : 'descending'
+            );
+        }
     }
 
-    function saveSort() {
-        const k = 'intv.sort';
-        sessionStorage.setItem(k, JSON.stringify(currentSort));
+    function saveSortState() {
+        const key = 'intv.sort';
+        sessionStorage.setItem(key, JSON.stringify(currentSort));
     }
-    function restoreSort() {
+
+    function restoreSortState() {
         try {
             const raw = sessionStorage.getItem('intv.sort');
             if (!raw) return;
-            const s = JSON.parse(raw);
-            if (s && Number.isInteger(s.idx) && s.dir && s.type) {
-                sortBy(s.idx, s.type, s.dir, /*skipSave*/true);
+
+            const storedSort = JSON.parse(raw);
+            if (
+                storedSort &&
+                Number.isInteger(storedSort.columnIndex) &&
+                storedSort.direction &&
+                storedSort.type
+            ) {
+                sortBy(storedSort.columnIndex, storedSort.type, storedSort.direction, true);
             }
-        } catch {}
+        } catch {
+            // silencieux
+        }
     }
 
     // ---------- Tri ----------
-    function sortBy(idx, type, forceDir = null, skipSave = false) {
-        ths.forEach(th => th.classList.remove('sort-asc','sort-desc'));
+    function sortBy(columnIndex, valueType, forcedDirection = null, skipSave = false) {
+        headerCells.forEach(header =>
+            header.classList.remove('sort-asc', 'sort-desc')
+        );
 
-        if (currentSort.idx === idx && !forceDir) {
-            currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+        if (currentSort.columnIndex === columnIndex && !forcedDirection) {
+            // Inversion asc/desc
+            currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
         } else {
-            currentSort = { idx, dir: forceDir || 'asc', type };
+            currentSort = {
+                columnIndex,
+                direction: forcedDirection || 'asc',
+                type: valueType
+            };
         }
-        const th = ths[idx];
-        th?.classList.add(currentSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
-        applyAriaSort(th, currentSort.dir);
 
-        const pairs = getPairs();
-        const dirMul = currentSort.dir === 'asc' ? 1 : -1;
+        const sortedHeader = headerCells[columnIndex];
+        if (sortedHeader) {
+            sortedHeader.classList.add(
+                currentSort.direction === 'asc' ? 'sort-asc' : 'sort-desc'
+            );
+        }
+        applyAriaSort(sortedHeader, currentSort.direction);
 
-        pairs.sort((A, B) => {
-            const a = getCellValue(A.master, idx, type);
-            const b = getCellValue(B.master, idx, type);
+        const rowPairs = getRowPairs();
+        const directionMultiplier = currentSort.direction === 'asc' ? 1 : -1;
 
-            // nulls (vides/—) vont en bas en asc
-            const an = (a === null || a === undefined);
-            const bn = (b === null || b === undefined);
-            if (an && !bn) return  1 * dirMul;
-            if (!an && bn) return -1 * dirMul;
+        rowPairs.sort((pairA, pairB) => {
+            const valueA = getCellValue(pairA.master, columnIndex, valueType);
+            const valueB = getCellValue(pairB.master, columnIndex, valueType);
 
-            if (a < b) return -1 * dirMul;
-            if (a > b) return  1 * dirMul;
-            // tri stable : conserver ordre original
-            return A.idx - B.idx;
+            const isNullA = valueA === null || valueA === undefined;
+            const isNullB = valueB === null || valueB === undefined;
+
+            // Valeurs nulles en bas (en asc)
+            if (isNullA && !isNullB) return 1 * directionMultiplier;
+            if (!isNullA && isNullB) return -1 * directionMultiplier;
+
+            if (valueA < valueB) return -1 * directionMultiplier;
+            if (valueA > valueB) return 1 * directionMultiplier;
+
+            // Tri stable : conserver l'ordre d'origine
+            return pairA.originalIndex - pairB.originalIndex;
         });
 
-        // Réinjection DOM par paire
-        const frag = document.createDocumentFragment();
-        pairs.forEach(p => {
-            frag.appendChild(p.master);
-            if (p.detail) frag.appendChild(p.detail);
+        // Réinjection DOM par paire (master + détail)
+        const fragment = document.createDocumentFragment();
+        rowPairs.forEach(pair => {
+            fragment.appendChild(pair.master);
+            if (pair.detail) fragment.appendChild(pair.detail);
         });
-        tbody.appendChild(frag);
+        tableBody.appendChild(fragment);
 
-        if (!skipSave) saveSort();
+        if (!skipSave) saveSortState();
     }
 
-    // Clic sur en-têtes triables
-    ths.forEach((th, idx) => {
-        const type = th.dataset.sort;
-        if (!type) return;
-        th.tabIndex = 0; // focusable
-        th.addEventListener('click', () => sortBy(idx, type));
-        th.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                sortBy(idx, type);
+    // ---------- Clic sur les en-têtes triables ----------
+    headerCells.forEach((headerCell, columnIndex) => {
+        const sortType = headerCell.dataset.sort;
+        if (!sortType) return;
+
+        headerCell.tabIndex = 0; // focus clavier
+
+        headerCell.addEventListener('click', () => sortBy(columnIndex, sortType));
+        headerCell.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                sortBy(columnIndex, sortType);
             }
         });
     });
 
-    // ---------- Lignes cliquables / Toggle détail / Historique ----------
-    tbody.addEventListener('click', (e) => {
-        const btnToggle = e.target.closest('.js-row-toggle');
-        if (btnToggle) {
-            const rowId = btnToggle.dataset.rowId;
-            const det = document.getElementById('det-' + rowId);
-            if (!det) return;
-            const isOpen = !det.hasAttribute('hidden');
-            if (isOpen) {
-                det.setAttribute('hidden', '');
-                btnToggle.setAttribute('aria-expanded', 'false');
-            } else {
-                det.removeAttribute('hidden');
-                btnToggle.setAttribute('aria-expanded', 'true');
-            }
-            return; // ne pas naviguer
-        }
+    // ---------- Lignes cliquables / détail / historique ----------
+    tableBody.addEventListener('click', event => {
+        // Toggle détail
+        const toggleButton = event.target.closest('.js-row-toggle');
+        if (toggleButton) {
+            const rowId = toggleButton.dataset.rowId;
+            const detailRow = document.getElementById('det-' + rowId);
+            if (!detailRow) return;
 
-        const histBtn = e.target.closest('.js-open-history');
-        if (histBtn) {
-            const url = histBtn.dataset.historyUrl;
-            if (!url) return;
-            const w = window.open(url, 'history_popup', 'noopener,noreferrer,width=980,height=720');
-            if (!w) window.location.href = url; // fallback si popup bloquée
+            const isOpen = !detailRow.hasAttribute('hidden');
+            if (isOpen) {
+                detailRow.setAttribute('hidden', '');
+                toggleButton.setAttribute('aria-expanded', 'false');
+            } else {
+                detailRow.removeAttribute('hidden');
+                toggleButton.setAttribute('aria-expanded', 'true');
+            }
             return;
         }
 
-        const onAction = e.target.closest('button, a, input, .actions');
-        if (onAction) return; // ne pas déclencher la navigation si clic sur action
+        // Bouton historique (popup)
+        const historyButton = event.target.closest('.js-open-history');
+        if (historyButton) {
+            const historyUrl = historyButton.dataset.historyUrl;
+            if (!historyUrl) return;
 
-        const tr = e.target.closest('tr[data-href]');
-        if (tr) window.location.href = tr.dataset.href;
+            const popupWindow = window.open(
+                historyUrl,
+                'history_popup',
+                'noopener,noreferrer,width=980,height=720'
+            );
+            if (!popupWindow) {
+                // Popup bloquée → fallback navigation
+                window.location.href = historyUrl;
+            }
+            return;
+        }
+
+        // Clic sur une action : ne pas naviguer
+        const actionTarget = event.target.closest('button, a, input, .actions');
+        if (actionTarget) return;
+
+        // Navigation par clic sur la ligne
+        const row = event.target.closest('tr[data-href]');
+        if (row && row.dataset.href) {
+            window.location.href = row.dataset.href;
+        }
     });
 
-    // ---------- Chips (scope) ----------
+    // ---------- Scope via chips (avec submit automatique) ----------
     function submitWithScope() {
-        const urgent = chipUrgent?.classList.contains('is-active') ?? false;
-        const me     = chipMe?.classList.contains('is-active') ?? false;
-        const val = urgent && me ? 'both' : urgent ? 'urgent' : me ? 'me' : '';
-        if (scopeInput) scopeInput.value = val;
-        form.submit();
+        const isUrgentActive = chipUrgent?.classList.contains('is-active') ?? false;
+        const isMeActive = chipMe?.classList.contains('is-active') ?? false;
+
+        const value =
+            isUrgentActive && isMeActive
+                ? 'both'
+                : isUrgentActive
+                    ? 'urgent'
+                    : isMeActive
+                        ? 'me'
+                        : '';
+
+        if (scopeInput) scopeInput.value = value;
+        filterForm.submit();
     }
+
     chipUrgent?.addEventListener('click', () => {
         chipUrgent.classList.toggle('is-active');
         submitWithScope();
     });
+
     chipMe?.addEventListener('click', () => {
         chipMe.classList.toggle('is-active');
         submitWithScope();
     });
 
-    // ---------- Per-page : submit on change (vous aviez "pas d’autosubmit" pour per-page ; si vous voulez garder manuel, commentez) ----------
-    perPageSel?.addEventListener('change', () => form.submit());
+    // ---------- Per-page : submit on change ----------
+    perPageSelect?.addEventListener('change', () => filterForm.submit());
 
-    // ---------- Bouton Effacer ----------
-    clearBtn?.addEventListener('click', () => {
+    // ---------- Bouton Effacer (recherche) ----------
+    clearButton?.addEventListener('click', () => {
         if (!searchInput) return;
         searchInput.value = '';
-        form.submit();
+        filterForm.submit();
     });
 
-    // ---------- Restaurer tri précédent ----------
-    restoreSort();
+    // ---------- Restaurer le tri précédent ----------
+    restoreSortState();
 })();

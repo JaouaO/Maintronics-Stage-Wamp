@@ -1,34 +1,41 @@
 <?php
-// app/Http/Controllers/TourPrepController.php
 
 namespace App\Http\Controllers;
 
 use App\Services\TourPrep\AutoplanService;
 use App\Services\UpdateInterventionService;
-use Carbon\Carbon;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use App\Services\TourPrep\GeocodeService;
 use App\Services\TourPrep\DistanceServiceFast;
 use App\Services\TourPrep\DistanceServiceOsrm;
 use App\Services\TourPrep\TourBuilder;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class TourPrepController extends Controller
 {
+    /**
+     * Affichage de la page "Préparation de tournée" pour une agence + date.
+     * - Géocode l’agence
+     * - Récupère les RDV du jour
+     * - Construit les tournées par technicien (TourBuilder)
+     */
     public function show(Request $req)
     {
         $date  = $req->query('date', date('Y-m-d'));
         $agRef = $req->query('agref');           // ex: M59L
         $mode  = $req->query('mode', 'fast');    // fast | precise
-        $opt   = (bool) $req->query('opt', 0);   // 0|1
+        $opt   = (bool)$req->query('opt', 0);    // 0|1
 
         if (!$agRef) {
             return response('Paramètre agref manquant (ex: ?agref=M44N&date=2025-11-05)', 400);
         }
 
-        // Adresse de départ = agence
+        // 1) Adresse de départ = agence
         $ag = DB::table('agence')->where('Code_ag', $agRef)->first();
-        if (!$ag) return response('Agence introuvable pour Code_ag='.$agRef, 404);
+        if (!$ag) {
+            return response('Agence introuvable pour Code_ag=' . $agRef, 404);
+        }
 
         $parts = array_filter([
             trim((string)($ag->AdrAg1 ?? '')),
@@ -40,13 +47,14 @@ class TourPrepController extends Controller
             $startLabel = trim((string)($ag->CpAg ?? '') . ' ' . (string)$ag->VilleAg);
         }
 
-        $geo = new GeocodeService();
+        $geo      = new GeocodeService();
         $startGeo = $geo->geocode($startLabel);
+
         if (!$startGeo) {
-            return response('Impossible de géocoder l’adresse agence ('.$startLabel.')', 500);
+            return response('Impossible de géocoder l’adresse agence (' . $startLabel . ')', 500);
         }
 
-        // RDV du jour rattachés à cette agence (via préfixe NumInt) + urgence/commentaire
+        // 2) RDV du jour rattachés à cette agence (préfixe NumInt)
         $rows = DB::table('t_intervention as ti')
             ->leftJoin('t_actions_etat as tae', 'tae.NumInt', '=', 'ti.NumInt')
             ->select(
@@ -54,10 +62,14 @@ class TourPrepController extends Controller
                 'ti.CodeTech',
                 'ti.DateIntPrevu',
                 'ti.HeureIntPrevu',
-                'ti.AdLivCli','ti.CPLivCli','ti.VilleLivCli','ti.TypeApp','ti.Marque',
+                'ti.AdLivCli',
+                'ti.CPLivCli',
+                'ti.VilleLivCli',
+                'ti.TypeApp',
+                'ti.Marque',
                 DB::raw('COALESCE(tae.urgent, 0) as urgent'),
                 'tae.commentaire as commentaire',
-                // ⬇️ drapeaux pour la vue
+                // Drapeaux pour la vue
                 DB::raw("EXISTS(SELECT 1 FROM t_planning_technicien p
                     WHERE p.NumIntRef=ti.NumInt AND p.isObsolete=0 AND p.IsValidated=1) as has_validated"),
                 DB::raw("EXISTS(SELECT 1 FROM t_planning_technicien p2
@@ -71,84 +83,103 @@ class TourPrepController extends Controller
 
         if ($rows->isEmpty()) {
             return view('tourprep.index', [
-                'date'=>$date, 'agRef'=>$agRef, 'mode'=>$mode, 'opt'=>$opt,
-                'start'=>$startGeo, 'techTours'=>[],
+                'date'     => $date,
+                'agRef'    => $agRef,
+                'mode'     => $mode,
+                'opt'      => $opt,
+                'start'    => $startGeo,
+                'techTours'=> [],
             ]);
         }
 
-        // Regroupement par technicien
+        // 3) Regroupement par technicien
         $perTech = [];
         foreach ($rows as $r) {
             $perTech[$r->CodeTech][] = $r;
         }
 
-        $builder = new TourBuilder($geo, new DistanceServiceFast(), new DistanceServiceOsrm());
+        $builder   = new TourBuilder($geo, new DistanceServiceFast(), new DistanceServiceOsrm());
         $techTours = [];
 
+        // 4) Construction de la tournée pour chaque technicien
         foreach ($perTech as $tech => $rdvs) {
             $data = $builder->build(
-                ['label'=>$startLabel,'lat'=>$startGeo['lat'],'lon'=>$startGeo['lon']],
+                ['label' => $startLabel, 'lat' => $startGeo['lat'], 'lon' => $startGeo['lon']],
                 collect($rdvs),
                 $mode,
                 $opt
             );
 
-            $flagsByNum = collect($rdvs)->keyBy('NumInt')->map(function($r){
-                return ['has_validated'=>(int)$r->has_validated, 'has_temp'=>(int)$r->has_temp];
-            });
+            // Injection des drapeaux has_validated / has_temp dans chaque stop
+            $flagsByNum = collect($rdvs)
+                ->keyBy('NumInt')
+                ->map(fn($r) => [
+                    'has_validated' => (int)$r->has_validated,
+                    'has_temp'      => (int)$r->has_temp,
+                ]);
 
-            $stops = array_map(function($s) use ($flagsByNum){
+            $stops = array_map(function ($s) use ($flagsByNum) {
                 $n = $s['numint'] ?? null;
-                if ($n && isset($flagsByNum[$n])) { return $s + $flagsByNum[$n]; }
+                if ($n && isset($flagsByNum[$n])) {
+                    return $s + $flagsByNum[$n];
+                }
                 return $s;
             }, $data['stops']);
 
             $techTours[] = [
-                'tech'=>$tech,
-                'stops'=>$stops,
-                'segments'=>$data['segments'],
-                'total'=>$data['total'],
-                'geometry'=>$data['geometry'],
+                'tech'     => $tech,
+                'stops'    => $stops,
+                'segments' => $data['segments'],
+                'total'    => $data['total'],
+                'geometry' => $data['geometry'],
             ];
         }
 
-        return view('tourprep.index', compact('date','agRef','mode','opt','techTours'))
+        return view('tourprep.index', compact('date', 'agRef', 'mode', 'opt', 'techTours'))
             ->with('start', $startGeo);
     }
 
+    /**
+     * Génère une proposition d’autoplanning (sans commit).
+     * Blocage si la date <= aujourd’hui.
+     */
     public function autoplanGenerate(Request $req): \Illuminate\Http\JsonResponse
     {
         try {
-            $date  = $req->input('date');              // YYYY-MM-DD
-            $agRef = $req->input('agref');             // ex: M59L
-            $mode  = $req->input('mode', 'fast');      // fast|precise
-            $opt   = (bool)$req->input('opt', 1);      // on optimise côté aperçu
+            $date  = $req->input('date');          // YYYY-MM-DD
+            $agRef = $req->input('agref');         // ex: M59L
+            $mode  = $req->input('mode', 'fast');  // fast|precise
+            $opt   = (bool)$req->input('opt', 1);  // optimisation côté aperçu
 
             if (!$date || !$agRef) {
-                return response()->json(['ok'=>false,'message'=>'Paramètres manquants (date, agref).'], 422);
+                return response()->json(['ok' => false, 'message' => 'Paramètres manquants (date, agref).'], 422);
             }
 
-            // ❌ Blocage autoplanning sur aujourd'hui ou date passée
+            // Autoplanning interdit pour date passée ou aujourd'hui
             $today = date('Y-m-d');
             if ($date <= $today) {
                 return response()->json([
                     'ok'      => false,
-                    'message' => 'L\'autoplanning n’est autorisé que pour une date future.'
+                    'message' => 'L\'autoplanning n’est autorisé que pour une date future.',
                 ], 422);
             }
 
             /** @var AutoplanService $svc */
-            $svc = app(AutoplanService::class);
-            $proposal = $svc->generateProposal($agRef, $date, $mode, $opt);
+            $svc       = app(AutoplanService::class);
+            $proposal  = $svc->generateProposal($agRef, $date, $mode, $opt);
 
-            return response()->json(['ok'=>true] + $proposal);
+            return response()->json(['ok' => true] + $proposal);
         } catch (\Throwable $e) {
             report($e);
-            return response()->json(['ok'=>false,'message'=>$e->getMessage()], 500);
+            return response()->json(['ok' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
-
+    /**
+     * Commit effectif de la proposition d’autoplanning.
+     * - Reçoit une liste d’assignments [{numInt, toTech, rdv_at}, ...]
+     * - Pour chaque, construit un DTO compatible UpdateInterventionService::updateAndPlanRdv()
+     */
     public function autoplanCommit(Request $req): \Illuminate\Http\JsonResponse
     {
         $agRef = (string)$req->input('agref', '');
@@ -156,7 +187,10 @@ class TourPrepController extends Controller
         $ops   = (array)$req->input('assignments', []); // [{numInt, fromTech, toTech, rdv_at}...]
 
         if (!$agRef || !$date || empty($ops)) {
-            return response()->json(['ok' => false, 'message' => 'Entrées incomplètes (agref, date, assignments).'], 422);
+            return response()->json([
+                'ok'      => false,
+                'message' => 'Entrées incomplètes (agref, date, assignments).',
+            ], 422);
         }
 
         try {
@@ -165,17 +199,18 @@ class TourPrepController extends Controller
                 $svc = app(UpdateInterventionService::class);
 
                 foreach ($ops as $op) {
-                    $num  = (string)($op['numInt']  ?? '');
-                    $to   = (string)($op['toTech']  ?? '');
-                    $when = (string)($op['rdv_at']  ?? ''); // "YYYY-MM-DD HH:MM:SS"
+                    $num  = (string)($op['numInt'] ?? '');
+                    $to   = (string)($op['toTech'] ?? '');
+                    $when = (string)($op['rdv_at'] ?? ''); // "YYYY-MM-DD HH:MM:SS"
 
                     if ($num === '' || $to === '' || $when === '') {
                         continue;
                     }
 
-                    // Construire le DTO attendu par UpdateInterventionService::updateAndPlanRdv()
-                    $dt     = \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $when, 'Europe/Paris');
-                    $compat = new \Illuminate\Http\Request([
+                    // Construction du faux Request attendu par UpdateInterventionDTO
+                    $dt = Carbon::createFromFormat('Y-m-d H:i:s', $when, 'Europe/Paris');
+
+                    $compat = new Request([
                         'code_sal_auteur' => (string)(session('codeSal') ?: 'system'),
                         'rea_sal'         => $to,
                         'date_rdv'        => $dt->toDateString(),
@@ -189,7 +224,7 @@ class TourPrepController extends Controller
                         'code_postal'     => null,
                         'ville'           => null,
                         'marque'          => null,
-                        'action_type'     => 'rdv_valide', // ← très important
+                        'action_type'     => 'rdv_valide', // très important pour la logique métier
                     ]);
 
                     $dto = \App\Services\DTO\UpdateInterventionDTO::fromRequest($compat, $num);
@@ -200,9 +235,10 @@ class TourPrepController extends Controller
             return response()->json(['ok' => true]);
         } catch (\Throwable $e) {
             report($e);
-            return response()->json(['ok' => false, 'message' => 'Commit annulé : ' . $e->getMessage()], 500);
+            return response()->json([
+                'ok'      => false,
+                'message' => 'Commit annulé : ' . $e->getMessage(),
+            ], 500);
         }
     }
-
-
 }

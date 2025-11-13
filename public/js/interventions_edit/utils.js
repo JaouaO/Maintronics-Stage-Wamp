@@ -1,43 +1,54 @@
 // utils.js (module)
-export function withBtnLock(btn, fn) {
-    if (!btn) return fn();
-    if (btn.dataset.lock === '1') return;
-    btn.dataset.lock = '1';
-    const prevDisabled = btn.disabled;
-    btn.disabled = true;
 
-    let res;
-    try { res = fn(); }
-    catch (e) { btn.dataset.lock = ''; btn.disabled = prevDisabled; throw e; }
+export function withBtnLock(buttonElement, callback) {
+    if (!buttonElement) return callback();
 
-    if (res && typeof res.then === 'function') {
-        return res.finally(() => { btn.dataset.lock = ''; btn.disabled = prevDisabled; });
-    } else {
-        btn.dataset.lock = '';
-        btn.disabled = prevDisabled;
-        return res;
+    if (buttonElement.dataset.lock === '1') return;
+
+    buttonElement.dataset.lock = '1';
+    const previousDisabledState = buttonElement.disabled;
+    buttonElement.disabled = true;
+
+    let result;
+    try {
+        result = callback();
+    } catch (error) {
+        buttonElement.dataset.lock = '';
+        buttonElement.disabled = previousDisabledState;
+        throw error;
     }
+
+    // Gestion des callbacks async (Promise)
+    if (result && typeof result.then === 'function') {
+        return result.finally(() => {
+            buttonElement.dataset.lock = '';
+            buttonElement.disabled = previousDisabledState;
+        });
+    }
+
+    buttonElement.dataset.lock = '';
+    buttonElement.disabled = previousDisabledState;
+    return result;
 }
 
-export const pad = n => (n < 10 ? '0' : '') + n;
+export const pad = (value) => (value < 10 ? '0' : '') + value;
 
-export function hoursOnly(iso) {
-    const dt = new Date(iso);
-    return `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-}
 
-export function escapeHtml(s) {
-    return String(s ?? '')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+export function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 }
 
-
 // --- Heure serveur centralisée ---
 export const SERVER_OFFSET_MS = (() => {
-    const base = new Date((window.APP && window.APP.serverNow) || Date.now());
-    return base.getTime() - Date.now();
+    const baseServerDate = new Date(
+        (window.APP && window.APP.serverNow) || Date.now()
+    );
+    return baseServerDate.getTime() - Date.now();
 })();
 
 /** "Maintenant" côté serveur (Date) */
@@ -46,25 +57,36 @@ export function nowServer() {
 }
 
 /** Minuit local d'une Date */
-export function startOfDay(d) {
-    const x = new Date(d);
-    x.setHours(0, 0, 0, 0);
-    return x;
+export function startOfDay(date) {
+    const copy = new Date(date);
+    copy.setHours(0, 0, 0, 0);
+    return copy;
 }
 
-/** true si d est strictement avant "aujourd'hui" (selon l'heure serveur) */
-export function isBeforeToday(d) {
-    return startOfDay(d) < startOfDay(nowServer());
+/** true si date < aujourd'hui (selon l'heure serveur) */
+export function isBeforeToday(date) {
+    return startOfDay(date) < startOfDay(nowServer());
 }
+
+/** Récupère tous les codes techniciens du sélecteur d'agenda (#selModeTech), hors "_ALL" */
 export function getAgendaCodes() {
-    // récupère tous les codes du sélecteur agenda (hors _ALL), normalisés
-    const opts = document.querySelectorAll('#selModeTech option');
-    return Array.from(opts)
-        .map(o => (o.value || '').toUpperCase().trim())
-        .filter(v => v && v !== '_ALL');
+    const options = document.querySelectorAll('#selModeTech option');
+
+    return Array.from(options)
+        .map(option =>
+            (option.value || '').toUpperCase().trim()
+        )
+        .filter(value => value && value !== '_ALL');
 }
+
+/** True si le code technicien est présent dans la liste de l'agenda */
 export function isInAgendaList(code) {
-    const c = (code || '').toUpperCase().trim();
-    if (!c) return false;
-    try { return getAgendaCodes().includes(c); } catch { return false; }
+    const normalizedCode = (code || '').toUpperCase().trim();
+    if (!normalizedCode) return false;
+
+    try {
+        return getAgendaCodes().includes(normalizedCode);
+    } catch {
+        return false;
+    }
 }

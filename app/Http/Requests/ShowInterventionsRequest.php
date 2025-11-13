@@ -7,20 +7,27 @@ use Normalizer;
 
 class ShowInterventionsRequest extends FormRequest
 {
+    /**
+     * Autorise uniquement si un salarié connecté + agences en session.
+     */
     public function authorize(): bool
     {
         return is_array(session('agences_autorisees')) && !empty(session('codeSal'));
     }
 
+    /**
+     * Règles pour les filtres / recherche du tableau principal.
+     */
     public function rules(): array
     {
         return [
             'per_page' => 'nullable|integer|in:10,25,50,100',
             'q'        => ['nullable','string','min:1','max:120','regex:/^[^\x00-\x1F\x7F<>]{1,}$/u'],
             'scope'    => 'nullable|string|in:urgent,me,both',
-            // NEW
-            'ag'       => 'nullable|string|min:2|max:12',      // on laisse le contrôle fin au contrôleur/service
-            'lieu'     => 'nullable|in:all,site,labo',         // filtre lieu validé ici
+            // Agence filtrée (contrôle fin dans le contrôleur)
+            'ag'       => 'nullable|string|min:2|max:12',
+            // Lieu (filtre fonctionnel)
+            'lieu'     => 'nullable|in:all,site,labo',
         ];
     }
 
@@ -32,28 +39,30 @@ class ShowInterventionsRequest extends FormRequest
             'q.max'       => 'Votre recherche est trop longue (120 max).',
             'q.regex'     => 'Certains caractères ne sont pas autorisés.',
             'scope.in'    => 'Le filtre demandé est invalide.',
-            // NEW
             'lieu.in'     => 'Le lieu doit être “all”, “site” ou “labo”.',
         ];
     }
 
+    /**
+     * Normalisation “douce” de q / per_page / scope / ag / lieu depuis la query string.
+     */
     protected function prepareForValidation(): void
     {
-        // q : nettoyage doux
+        // Nettoyage de la recherche texte
         $q = $this->query('q');
         if (is_string($q)) {
             if (class_exists(Normalizer::class)) {
                 $q = Normalizer::normalize($q, Normalizer::FORM_C);
             }
             $q = preg_replace('/[\x00-\x1F\x7F]/u', '', $q);
-            $q = str_replace(['<','>'], '', $q);
+            $q = str_replace(['<', '>'], '', $q);
             $q = preg_replace('/\s+/u', ' ', trim($q));
             $q = mb_substr($q, 0, 120);
         }
 
-        // NEW: normalisation lieu
+        // Normalisation du lieu
         $lieu = strtolower((string) $this->query('lieu', 'all'));
-        if (!in_array($lieu, ['all','site','labo'], true)) {
+        if (!in_array($lieu, ['all', 'site', 'labo'], true)) {
             $lieu = 'all';
         }
 
@@ -61,7 +70,6 @@ class ShowInterventionsRequest extends FormRequest
             'q'        => $q ?: null,
             'per_page' => (int) $this->query('per_page', 10),
             'scope'    => $this->query('scope') ?: null,
-            // NEW
             'ag'       => $this->query('ag') ?: null,
             'lieu'     => $lieu,
         ]);

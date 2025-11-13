@@ -9,16 +9,22 @@
             <div class="cardBody">
                 <div class="title-row">
                     <h1>Connexion</h1>
-                    {{-- pill supprimé --}}
                 </div>
 
+                {{-- Message d’erreur global (ex : identifiant non reconnu) --}}
                 @if (session('message'))
                     <div class="alert alert-danger">{{ session('message') }}</div>
                 @endif
 
-                <p class="lead">Entrez votre identifiant (CodeSal) pour ouvrir votre session.</p>
+                <p class="lead">
+                    Entrez votre identifiant (CodeSal) pour ouvrir votre session.
+                </p>
 
-                <form method="post" action="{{ route('authentification.post') }}" autocomplete="off" class="form">
+                {{-- Formulaire d’authentification minimal (CodeSal seul) --}}
+                <form method="post"
+                      action="{{ route('authentification.post') }}"
+                      autocomplete="off"
+                      class="form">
                     @csrf
 
                     <div class="form-grid">
@@ -41,7 +47,6 @@
 
                         <div class="actions">
                             <button class="btn btn-primary" type="submit">Se connecter</button>
-                            {{-- bouton "Besoin d’aide" supprimé --}}
                         </div>
                     </div>
                 </form>
@@ -49,11 +54,14 @@
         </div>
     </div>
 
+    {{-- Focus automatique sur le champ si vide --}}
     @push('scripts')
         <script>
             (function(){
                 const el = document.getElementById('codeSal');
-                if(el && !el.value) el.focus();
+                if (el && !el.value) {
+                    el.focus();
+                }
             })();
         </script>
     @endpush

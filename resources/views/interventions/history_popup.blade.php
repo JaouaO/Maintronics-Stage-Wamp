@@ -9,34 +9,8 @@
     <meta charset="utf-8">
     <title>Historique {{ $numInt }}</title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    {{-- On réutilise la même CSS si dispo --}}
+    {{-- On réutilise la même CSS que l’écran d’édition --}}
     <link rel="stylesheet" href="{{ asset('css/intervention_edit.css') }}">
-    <style>
-        /* petit filet de sécurité si la CSS n’est pas chargée */
-        table{width:100%;border-collapse:collapse;font:14px system-ui}
-        th,td{padding:6px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}
-        .row-details{display:none}
-        .row-details.is-open{display:table-row}
-        .hist-details-cell{background:#fafafa}
-        .hist-title{margin:6px 0 12px}
-        .cell-center{text-align:center}
-        .prewrap{white-space:pre-wrap}
-        .note{color:#666}
-        .w-150{width:150px}.w-200{width:200px}.w-40{width:40px}
-        .cell-p6{padding:6px}.cell-p8-10{padding:8px 10px}
-        .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-        .sep{border:none;border-top:1px solid #e5e7eb;margin:10px 0}
-        .badge{display:inline-block;padding:2px 6px;border-radius:999px;font-size:11px;line-height:1.2;border:1px solid #d6d9df}
-        .badge-temp{background:#fff5dc;border-color:#e6b34e;color:#7a5400}
-        .badge-valid{background:#e9f8ef;border-color:#0d6b2d;color:#0d6b2d}
-        .badge-call{background:#e9f2ff;border-color:#7aa7ff;color:#214c9c}
-        .badge-urgent{background:#ffe9e9;border-color:#d93025;color:#a31212;font-weight:700;letter-spacing:.2px}
-        .chip{display:inline-block;padding:3px 8px;border-radius:999px;font-size:12px;line-height:1.1;border:1px solid #d6d9df;white-space:nowrap}
-        .chip-green{background:#e9f8ef;border-color:#0d6b2d;color:#0d6b2d}
-        .chip-amber{background:#fff5dc;border-color:#e6b34e;color:#7a5400}
-        .chips-wrap{display:flex;flex-wrap:wrap;gap:6px}
-        .hist-toggle{width:24px;height:24px;border:1px solid #d6d9df;border-radius:4px;background:#fff;cursor:pointer}
-    </style>
 </head>
 <body>
 <div class="box m-12">
@@ -67,8 +41,13 @@
                         $evtType = $suivi->evt_type ?? null;
                         $meta = [];
                         if (!empty($suivi->evt_meta)) {
-                            try { $meta = (is_array($suivi->evt_meta) ? $suivi->evt_meta : json_decode($suivi->evt_meta, true)) ?: []; }
-                            catch (\Throwable $e) { $meta = []; }
+                            try {
+                                $meta = (is_array($suivi->evt_meta)
+                                    ? $suivi->evt_meta
+                                    : json_decode($suivi->evt_meta, true)) ?: [];
+                            } catch (\Throwable $e) {
+                                $meta = [];
+                            }
                         }
 
                         $dateIso = $meta['date'] ?? $meta['d'] ?? null;
@@ -89,10 +68,14 @@
 
                         $evtLabel = null; $evtClass = null;
                         switch ($evtType) {
-                            case 'CALL_PLANNED':      $evtLabel='Appel planifié';              $evtClass='badge-call';  break;
-                            case 'RDV_TEMP_INSERTED': $evtLabel='RDV temporaire (créé)';       $evtClass='badge-temp';  break;
-                            case 'RDV_TEMP_UPDATED':  $evtLabel='RDV temporaire (mis à jour)'; $evtClass='badge-temp';  break;
-                            case 'RDV_FIXED':         $evtLabel='RDV validé';                  $evtClass='badge-valid'; break;
+                            case 'CALL_PLANNED':
+                                $evtLabel = 'Appel planifié';              $evtClass = 'badge-call';  break;
+                            case 'RDV_TEMP_INSERTED':
+                                $evtLabel = 'RDV temporaire (créé)';       $evtClass = 'badge-temp';  break;
+                            case 'RDV_TEMP_UPDATED':
+                                $evtLabel = 'RDV temporaire (mis à jour)'; $evtClass = 'badge-temp';  break;
+                            case 'RDV_FIXED':
+                                $evtLabel = 'RDV validé';                  $evtClass = 'badge-valid'; break;
                         }
                         if ($evtLabel) {
                             $parts = [];

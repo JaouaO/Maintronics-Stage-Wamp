@@ -1,38 +1,40 @@
 // history.js
 export function initHistory() {
-    const btn = document.getElementById('openHistory');
-    if (!btn) return;
+    const openHistoryButton = document.getElementById('openHistory');
+    if (!openHistoryButton) return;
 
-    btn.addEventListener('click', () => {
-        const tpl = document.getElementById('tplHistory');
-        if (!tpl) {
+    openHistoryButton.addEventListener('click', () => {
+        const templateElement = document.getElementById('tplHistory');
+        if (!templateElement) {
             console.error('[HIST] template #tplHistory introuvable');
             return;
         }
 
-        const numInt  = btn.getAttribute('data-num-int') || 'hist';
-        const winName = 'historique_' + numInt; // fenêtre réutilisable
-        const w = window.open('', winName, 'width=960,height=720');
-        if (!w) {
+        const numInt = openHistoryButton.getAttribute('data-num-int') || 'hist';
+        const windowName = 'historique_' + numInt; // fenêtre réutilisable
+        const popupWindow = window.open('', windowName, 'width=960,height=720');
+        if (!popupWindow) {
             console.error('[HIST] window.open a été bloqué');
             return;
         }
 
-        // focus si déjà ouverte
-        try { w.focus(); } catch (e) {}
+        try { popupWindow.focus(); } catch { /* silencieux */ }
 
-        // récupère le HTML du template
-        let inner = '';
-        if (tpl.content && tpl.content.cloneNode) {
-            const frag = tpl.content.cloneNode(true);
-            inner = (frag.firstElementChild?.outerHTML || frag.textContent || '').trim();
+        // Récupère le HTML du template
+        let innerHtml = '';
+        if (templateElement.content && templateElement.content.cloneNode) {
+            const fragment = templateElement.content.cloneNode(true);
+            innerHtml = (fragment.firstElementChild?.outerHTML || fragment.textContent || '').trim();
         } else {
-            inner = (tpl.innerHTML || '').trim();
+            innerHtml = (templateElement.innerHTML || '').trim();
         }
-        if (!inner) inner = '<p class="note">Aucun contenu trouvé pour l’historique.</p>';
 
-        // normalise la classe de table si besoin
-        inner = inner.replace(/class="hist-table"/g, 'class="table"');
+        if (!innerHtml) {
+            innerHtml = '<p class="note">Aucun contenu trouvé pour l’historique.</p>';
+        }
+
+        // Normalise la classe de table si besoin
+        innerHtml = innerHtml.replace(/class="hist-table"/g, 'class="table"');
 
         // CSS de la page (même feuille si possible)
         const cssHref =
@@ -51,7 +53,7 @@ export function initHistory() {
   </style>
 </head>
 <body>
-  <div class="box m-12"><div class="body"><div class="table">${inner}</div></div></div>
+  <div class="box m-12"><div class="body"><div class="table">${innerHtml}</div></div></div>
 
   <script>
   (function(){
@@ -61,21 +63,20 @@ export function initHistory() {
       var trDetails = trMain.nextElementSibling;
       if(!trDetails || !trDetails.matches('.row-details')) return;
 
-      var open = trDetails.classList.toggle('is-open'); // ← clé : classe, pas style.display
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-      btn.textContent = open ? '–' : '+';
+      var isOpen = trDetails.classList.toggle('is-open'); // ← clé : classe, pas style.display
+      btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      btn.textContent = isOpen ? '–' : '+';
     }, {passive:true});
   })();
   <\/script>
 </body></html>`;
 
-        // écriture → remplace le DOM, donc on n’attache rien AVANT
         try {
-            w.document.open();
-            w.document.write(html);
-            w.document.close();
-        } catch (err) {
-            console.error('[HIST] Erreur écriture document:', err);
+            popupWindow.document.open();
+            popupWindow.document.write(html);
+            popupWindow.document.close();
+        } catch (error) {
+            console.error('[HIST] Erreur écriture document:', error);
         }
     });
 }

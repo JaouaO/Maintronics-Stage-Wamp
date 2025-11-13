@@ -1,63 +1,88 @@
 <?php
+
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateInterventionRequest extends FormRequest
 {
-    public function authorize() { return true; }
+    /**
+     * L’accès logique est déjà géré par middleware + contrôleur.
+     */
+    public function authorize(): bool
+    {
+        return true;
+    }
 
-    public function rules()
+    /**
+     * Règles pour la mise à jour globale d’une intervention (formulaire principal).
+     */
+    public function rules(): array
     {
         return [
             'commentaire'   => ['nullable','string','max:250','not_regex:/[<>]/'],
             'contact_reel'  => ['nullable','string','max:250','not_regex:/[<>]/'],
 
+            // RDV + technicien cible
             'rea_sal'       => ['required','string','max:5','exists:t_salarie,CodeSal'],
             'date_rdv'      => ['nullable','date_format:Y-m-d','after_or_equal:today'],
             'heure_rdv'     => ['nullable','date_format:H:i'],
 
+            // Auteur de l’action (code salarié connecté)
             'code_sal_auteur' => ['required','string','max:5'],
 
+            // Infos dossier
             'code_postal'   => ['nullable','string','max:10','regex:/^[0-9A-Za-z\- ]{4,10}$/'],
             'ville'         => ['nullable','string','max:80','not_regex:/[<>]/'],
             'marque'        => ['nullable','string','max:80','not_regex:/[<>]/'],
             'objet_trait'   => ['nullable','string','max:120','not_regex:/[<>]/'],
 
+            // Cases à cocher (traitement / affectation)
             'traitement'    => ['array'],
             'traitement.*'  => ['in:0,1'],
             'affectation'   => ['array'],
             'affectation.*' => ['in:0,1'],
 
+            // Type d’action métier (appel ou RDV validé)
             'action_type'   => ['required','in:,appel,rdv_valide'],
 
+            // Urgent : boolean optionnel (restera à false si non envoyé)
             'urgent'        => ['sometimes','boolean'],
         ];
     }
 
+    /**
+     * Nettoie les champs texte (suppression des contrôles + trim).
+     */
     protected function prepareForValidation(): void
     {
         foreach (['commentaire','contact_reel','ville','marque','objet_trait'] as $f) {
             if ($this->filled($f)) {
-                $this->merge([$f => trim(preg_replace('/[\x00-\x1F\x7F]/u','',$this->input($f)))]);
+                $this->merge([
+                    $f => trim(preg_replace('/[\x00-\x1F\x7F]/u', '', $this->input($f))),
+                ]);
             }
         }
     }
 
-    public function withValidator($validator)
+    /**
+     * Validation croisée : date_rdv et heure_rdv doivent aller ensemble.
+     */
+    public function withValidator($validator): void
     {
         $validator->after(function ($v) {
             $d = $this->input('date_rdv');
             $h = $this->input('heure_rdv');
+
             if (($d && !$h) || (!$d && $h)) {
-                $v->errors()->add('date_rdv', 'Saisissez la date et l’heure ensemble, ou laissez les deux vides.');
-                $v->errors()->add('heure_rdv', 'Saisissez la date et l’heure ensemble, ou laissez les deux vides.');
+                $msg = 'Saisissez la date et l’heure ensemble, ou laissez les deux vides.';
+                $v->errors()->add('date_rdv',  $msg);
+                $v->errors()->add('heure_rdv', $msg);
             }
         });
     }
 
-
-    public function messages()
+    public function messages(): array
     {
         return [
             'commentaire.string' => 'Le commentaire doit être une chaîne de caractères.',
@@ -72,11 +97,11 @@ class UpdateInterventionRequest extends FormRequest
             'rea_sal.exists'   => 'Le technicien sélectionné est introuvable.',
 
             'date_rdv.date_format'    => 'La date doit être au format AAAA-MM-JJ.',
-            'date_rdv.required'  => 'La date est requise.',
+            'date_rdv.required'       => 'La date est requise.',
             'date_rdv.after_or_equal' => 'La date doit être aujourd’hui ou plus tard.',
 
             'heure_rdv.date_format'   => 'L’heure doit être au format HH:MM.',
-            'heure_rdv.required' => 'L’heure est requise.',
+            'heure_rdv.required'      => 'L’heure est requise.',
 
             'code_sal_auteur.required' => 'Votre identifiant est requis.',
             'code_sal_auteur.string'   => 'Votre identifiant doit être une chaîne.',
@@ -95,14 +120,13 @@ class UpdateInterventionRequest extends FormRequest
             'objet_trait.string' => 'L’objet doit être une chaîne.',
             'objet_trait.max'    => 'L’objet ne peut pas dépasser 120 caractères.',
 
-            'traitement.array'    => 'Le bloc “Traitement” est invalide.',
-            'traitement.*.in'     => 'Chaque case “Traitement” doit valoir 0 ou 1.',
+            'traitement.array'   => 'Le bloc “Traitement” est invalide.',
+            'traitement.*.in'    => 'Chaque case “Traitement” doit valoir 0 ou 1.',
 
-            'affectation.array'   => 'Le bloc “Affectation” est invalide.',
-            'affectation.*.in'    => 'Chaque case “Affectation” doit valoir 0 ou 1.',
+            'affectation.array'  => 'Le bloc “Affectation” est invalide.',
+            'affectation.*.in'   => 'Chaque case “Affectation” doit valoir 0 ou 1.',
 
-            'action_type.in'      => 'Le type d’action est invalide.',
+            'action_type.in'     => 'Le type d’action est invalide.',
         ];
     }
 }
-

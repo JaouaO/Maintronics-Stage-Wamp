@@ -6,17 +6,37 @@
   <component name="ChangeListManager">
     <list default="true" id="4502a622-9abf-4b1f-b0c7-c929a0e85e30" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/Http/Controllers/MainController.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Http/Controllers/MainController.php" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/app/Http/Controllers/TourPrepController.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Http/Controllers/TourPrepController.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/Services/TourPrep/AutoplanService.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Services/TourPrep/AutoplanService.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/Services/TourPrep/DistanceServiceFast.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Services/TourPrep/DistanceServiceFast.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/css/intervention_edit.css" beforeDir="false" afterPath="$PROJECT_DIR$/public/css/intervention_edit.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/css/interventions.css" beforeDir="false" afterPath="$PROJECT_DIR$/public/css/interventions.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/css/interventions_create.css" beforeDir="false" afterPath="$PROJECT_DIR$/public/css/interventions_create.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/public/css/tourprep.css" beforeDir="false" afterPath="$PROJECT_DIR$/public/css/tourprep.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/Http/Requests/NotBlankRequest.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Http/Requests/NotBlankRequest.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/Http/Requests/RdvTemporaireRequest.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Http/Requests/RdvTemporaireRequest.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/Http/Requests/ReplanifierRequest.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Http/Requests/ReplanifierRequest.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/Http/Requests/ShowInterventionsRequest.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Http/Requests/ShowInterventionsRequest.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/Http/Requests/StoreInterventionRequest.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Http/Requests/StoreInterventionRequest.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/Http/Requests/SuggestNumIntRequest.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Http/Requests/SuggestNumIntRequest.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/Http/Requests/TextRequest.php" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/Http/Requests/UpdateInterventionRequest.php" beforeDir="false" afterPath="$PROJECT_DIR$/app/Http/Requests/UpdateInterventionRequest.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/js/interventions.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/js/interventions_create.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions_create.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/public/js/interventions_edit/agenda.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions_edit/agenda.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/js/interventions_edit/debug.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions_edit/debug.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/js/interventions_edit/guards.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions_edit/guards.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/js/interventions_edit/history.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions_edit/history.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/js/interventions_edit/horloge.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions_edit/horloge.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/js/interventions_edit/main.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions_edit/main.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/js/interventions_edit/modal.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions_edit/modal.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/js/interventions_edit/rdv.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions_edit/rdv.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/js/interventions_edit/utils.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions_edit/utils.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/public/js/interventions_show.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/interventions_show.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/public/js/tourprep.js" beforeDir="false" afterPath="$PROJECT_DIR$/public/js/tourprep.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/resources/views/TourPrep/index.blade.php" beforeDir="false" afterPath="$PROJECT_DIR$/resources/views/TourPrep/index.blade.php" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/storage/logs/laravel.log" beforeDir="false" afterPath="$PROJECT_DIR$/storage/logs/laravel.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/views/TourPrep/index(old).blade.php" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/views/error.blade.php" beforeDir="false" afterPath="$PROJECT_DIR$/resources/views/error.blade.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/views/interventions/create.blade.php" beforeDir="false" afterPath="$PROJECT_DIR$/resources/views/interventions/create.blade.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/views/interventions/history_popup.blade.php" beforeDir="false" afterPath="$PROJECT_DIR$/resources/views/interventions/history_popup.blade.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/views/interventions/show.blade.php" beforeDir="false" afterPath="$PROJECT_DIR$/resources/views/interventions/show.blade.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/views/login.blade.php" beforeDir="false" afterPath="$PROJECT_DIR$/resources/views/login.blade.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/resources/views/pagination/clean.blade.php" beforeDir="false" afterPath="$PROJECT_DIR$/resources/views/pagination/clean.blade.php" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/routes/web.php" beforeDir="false" afterPath="$PROJECT_DIR$/routes/web.php" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -222,7 +242,7 @@
       <workItem from="1762244869195" duration="9523000" />
       <workItem from="1762329522085" duration="28906000" />
       <workItem from="1762501819691" duration="4962000" />
-      <workItem from="1763026453633" duration="5247000" />
+      <workItem from="1763026453633" duration="9041000" />
     </task>
     <servers />
   </component>

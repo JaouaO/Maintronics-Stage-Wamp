@@ -1,129 +1,174 @@
 // public/js/interventions_create.js
 (() => {
-    const $ = (s, ctx) => (ctx || document).querySelector(s);
-    const ready = (fn) => (document.readyState === 'loading'
-        ? document.addEventListener('DOMContentLoaded', fn)
-        : fn());
+    const qs = (selector, context) =>
+        (context || document).querySelector(selector);
+
+    const onDomReady = callback => {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', callback);
+        } else {
+            callback();
+        }
+    };
 
     function getSuggestUrl() {
-        const meta = document.querySelector('meta[name="suggest-endpoint"]')?.content;
-        if (meta) return meta;
-        if (typeof window.CREATE_INTERVENTION_SUGGEST_URL === 'string' && window.CREATE_INTERVENTION_SUGGEST_URL.length) {
+        const metaElement = document
+            .querySelector('meta[name="suggest-endpoint"]');
+
+        if (metaElement?.content) {
+            return metaElement.content;
+        }
+
+        if (
+            typeof window.CREATE_INTERVENTION_SUGGEST_URL === 'string' &&
+            window.CREATE_INTERVENTION_SUGGEST_URL.length
+        ) {
             return window.CREATE_INTERVENTION_SUGGEST_URL;
         }
-        const scripts = document.querySelectorAll('script[src*="interventions_create.js"]');
-        for (const s of scripts) {
-            const ds = s.getAttribute('data-suggest');
-            if (ds) return ds;
+
+        const scripts = document.querySelectorAll(
+            'script[src*="interventions_create.js"]'
+        );
+        for (const scriptElement of scripts) {
+            const datasetUrl = scriptElement.getAttribute('data-suggest');
+            if (datasetUrl) return datasetUrl;
         }
+
         return '';
     }
 
-    // Petit helper visuel "chargement"
-    function setLoading(el, on) {
-        if (!el) return;
-        el.toggleAttribute('data-loading', !!on);
+    // Indique visuellement que l'input est en chargement (attribut data-loading)
+    function setLoading(element, isLoading) {
+        if (!element) return;
+        element.toggleAttribute('data-loading', !!isLoading);
     }
 
-    ready(() => {
-        const form   = $('#createForm');
-        const agence = $('#Agence');
-        const date   = $('#DateIntPrevu');
-        const num    = $('#NumInt');
-        const urgent = $('#Urgent');
-        const submit = form?.querySelector('button[type="submit"]');
+    onDomReady(() => {
+        const formElement = qs('#createForm');
+        const agenceSelect = qs('#Agence');
+        const dateInput = qs('#DateIntPrevu');
+        const numIntInput = qs('#NumInt');
+        const urgentCheckbox = qs('#Urgent');
+        const submitButton =
+            formElement?.querySelector('button[type="submit"]');
 
-        if (!form || !agence || !num) return;
+        if (!formElement || !agenceSelect || !numIntInput) return;
 
         const suggestEndpoint = getSuggestUrl();
         if (!suggestEndpoint) return;
 
-        // ——— Sécurité client légère (ne remplace pas la validation serveur)
-        const cp = $('#CPLivCli');
-        if (cp) {
-            cp.addEventListener('input', () => {
-                let v = cp.value.replace(/[^\dA-Za-z\- ]+/g, '');
-                if (v.length > 10) v = v.slice(0, 10);
-                cp.value = v;
+        // ----- Sécurité client légère (ne remplace pas la validation serveur) -----
+        const postalCodeInput = qs('#CPLivCli');
+        if (postalCodeInput) {
+            postalCodeInput.addEventListener('input', () => {
+                let value = postalCodeInput.value.replace(/[^\dA-Za-z\- ]+/g, '');
+                if (value.length > 10) value = value.slice(0, 10);
+                postalCodeInput.value = value;
             });
         }
 
-        const ville = $('#VilleLivCli');
-        if (ville) {
-            ville.addEventListener('input', () => {
-                let v = ville.value.replace(/[\x00-\x1F\x7F<>]/g, '');
-                if (v.length > 80) v = v.slice(0, 80);
-                ville.value = v;
+        const cityInput = qs('#VilleLivCli');
+        if (cityInput) {
+            cityInput.addEventListener('input', () => {
+                let value = cityInput.value.replace(/[\x00-\x1F\x7F<>]/g, '');
+                if (value.length > 80) value = value.slice(0, 80);
+                cityInput.value = value;
             });
         }
 
-        const marque = $('#Marque');
-        if (marque) {
-            marque.addEventListener('input', () => {
-                let v = marque.value.replace(/[\x00-\x1F\x7F<>]/g, '');
-                if (v.length > 80) v = v.slice(0, 80);
-                marque.value = v;
+        const brandInput = qs('#Marque');
+        if (brandInput) {
+            brandInput.addEventListener('input', () => {
+                let value = brandInput.value.replace(/[\x00-\x1F\x7F<>]/g, '');
+                if (value.length > 80) value = value.slice(0, 80);
+                brandInput.value = value;
             });
         }
 
-        // ——— Suggest NumInt (debounce + anti-course + AbortController)
-        let aborter = null;
-        let debounceTimer = null;
-        let seq = 0;
+        // ----- Suggest NumInt (debounce + AbortController + anti-course) -----
+        let currentAbortController = null;
+        let debounceTimerId = null;
+        let requestSequence = 0;
 
-        function refreshNum() {
-            const ag = agence.value;
-            const d  = date?.value || '';
-            if (!ag) return;
+        function refreshSuggestedNumber() {
+            const agenceValue = agenceSelect.value;
+            const dateValue = dateInput?.value || '';
 
-            if (aborter) aborter.abort();
-            aborter = new AbortController();
+            if (!agenceValue) return;
 
-            const mySeq = ++seq;
+            if (currentAbortController) currentAbortController.abort();
+            currentAbortController = new AbortController();
+
+            const mySequence = ++requestSequence;
+
             const url = new URL(suggestEndpoint, window.location.origin);
-            url.searchParams.set('agence', ag);
-            if (d) url.searchParams.set('date', d);
+            url.searchParams.set('agence', agenceValue);
+            if (dateValue) url.searchParams.set('date', dateValue);
 
-            setLoading(num, true);
+            setLoading(numIntInput, true);
+
             fetch(url.toString(), {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                signal: aborter.signal,
+                signal: currentAbortController.signal,
                 credentials: 'same-origin'
             })
-                .then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP '+r.status)))
-                .then(js => {
-                    if (mySeq !== seq) return;
-                    if (js && js.ok && js.numInt) num.value = js.numInt;
+                .then(response =>
+                    response.ok
+                        ? response.json()
+                        : Promise.reject(
+                            new Error('HTTP ' + response.status)
+                        )
+                )
+                .then(payload => {
+                    // On ignore si un autre appel a déjà mis à jour l’input
+                    if (mySequence !== requestSequence) return;
+                    if (payload && payload.ok && payload.numInt) {
+                        numIntInput.value = payload.numInt;
+                    }
                 })
-                .catch(err => { if (err.name !== 'AbortError') {/* silencieux */} })
-                .finally(() => setLoading(num, false));
+                .catch(error => {
+                    if (error.name === 'AbortError') return;
+                    // autres erreurs silencieuses côté UI
+                })
+                .finally(() => setLoading(numIntInput, false));
         }
 
-        function debouncedRefresh() {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(refreshNum, 180);
+        function debouncedRefreshSuggestedNumber() {
+            clearTimeout(debounceTimerId);
+            debounceTimerId = setTimeout(refreshSuggestedNumber, 180);
         }
 
-        agence.addEventListener('change', debouncedRefresh);
-        date?.addEventListener('change', debouncedRefresh);
-        date?.addEventListener('input',  debouncedRefresh);
+        agenceSelect.addEventListener('change', debouncedRefreshSuggestedNumber);
+        dateInput?.addEventListener('change', debouncedRefreshSuggestedNumber);
+        dateInput?.addEventListener('input', debouncedRefreshSuggestedNumber);
 
-        // ——— Double-submit guard + vérifs croisées simples
-        form.addEventListener('submit', (e) => {
-            if (submit?.disabled) { e.preventDefault(); return; }
-            // Règle UX : si l’un des deux (date, heure) est rempli → forcer l’autre
-            const d = $('#DateIntPrevu')?.value || '';
-            const h = $('#HeureIntPrevu')?.value || '';
-            if ((d && !h) || (!d && h)) {
-                e.preventDefault();
-                alert('Veuillez saisir à la fois la date et l’heure prévues, ou laisser les deux vides.');
+        // ----- Double-submit guard + vérifs simples date/heure -----
+        formElement.addEventListener('submit', event => {
+            if (submitButton?.disabled) {
+                event.preventDefault();
                 return;
             }
-            submit && (submit.disabled = true);
-            setTimeout(() => { submit && (submit.disabled = false); }, 5000); // sécurité
+
+            const dateValue = qs('#DateIntPrevu')?.value || '';
+            const timeValue = qs('#HeureIntPrevu')?.value || '';
+
+            // Règle UX : si un seul des deux champs est rempli → forcer l'autre
+            if ((dateValue && !timeValue) || (!dateValue && timeValue)) {
+                event.preventDefault();
+                alert(
+                    'Veuillez saisir à la fois la date et l’heure prévues, ou laisser les deux vides.'
+                );
+                return;
+            }
+
+            if (submitButton) submitButton.disabled = true;
+            // Sécurité anti double-clic (réactivation après quelques secondes)
+            setTimeout(() => {
+                if (submitButton) submitButton.disabled = false;
+            }, 5000);
         });
 
-        // Premier suggest (au chargement)
-        debouncedRefresh();
+        // Premier suggest au chargement
+        debouncedRefreshSuggestedNumber();
     });
 })();
